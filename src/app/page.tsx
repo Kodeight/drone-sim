@@ -37,7 +37,7 @@ export default function DroneSimulator() {
     ON_TARGET: 'text-success',
   };
 
-  const { width: panelWidth, onMouseDown: onResizeStart } = useResizable(420, 320, 700);
+  const { width: panelWidth, onMouseDown: onResizeStart } = useResizable(500, 350, 800, 'drone-sim-panel-width');
 
   return (
     <div className="h-screen flex flex-col bg-[#f4f6fb] overflow-hidden select-none">

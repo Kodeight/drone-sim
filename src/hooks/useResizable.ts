@@ -2,8 +2,25 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 
-export function useResizable(initialWidth: number, minWidth: number, maxWidth: number) {
-  const [width, setWidth] = useState(initialWidth);
+export function useResizable(
+  initialWidth: number,
+  minWidth: number,
+  maxWidth: number,
+  storageKey?: string,
+) {
+  const [width, setWidth] = useState(() => {
+    if (storageKey && typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          const parsed = parseInt(saved, 10);
+          if (!isNaN(parsed) && parsed >= minWidth && parsed <= maxWidth) return parsed;
+        }
+      } catch {}
+    }
+    return initialWidth;
+  });
+
   const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -39,6 +56,14 @@ export function useResizable(initialWidth: number, minWidth: number, maxWidth: n
       window.removeEventListener('mouseup', onMouseUp);
     };
   }, [minWidth, maxWidth]);
+
+  useEffect(() => {
+    if (storageKey) {
+      try {
+        localStorage.setItem(storageKey, String(width));
+      } catch {}
+    }
+  }, [width, storageKey]);
 
   return { width, onMouseDown };
 }
