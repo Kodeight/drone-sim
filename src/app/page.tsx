@@ -1,174 +1,155 @@
 'use client';
 
+import { useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useSimulation } from '@/hooks/useSimulation';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboard';
-import { useResizable } from '@/hooks/useResizable';
 import { useSimulationStore } from '@/store/simulationStore';
-import ControlPanel from '@/components/panels/ControlPanel';
-import PIDController from '@/components/panels/PIDController';
-import DisturbanceControls from '@/components/panels/DisturbanceControls';
-import TelemetryDisplay from '@/components/panels/TelemetryDisplay';
-import MotorDisplay from '@/components/panels/MotorDisplay';
+import { useTheme } from '@/hooks/useTheme';
 
+// Layout & Navigation Components
+import Header from '@/components/layout/Header';
+import Sidebar from '@/components/layout/Sidebar';
+
+// Panels
+import FlightStatus from '@/components/panels/FlightStatus';
+import ParametersPanel from '@/components/panels/ParametersPanel';
+import MotorThrustVisual from '@/components/panels/MotorThrustVisual';
+import QuickControls from '@/components/panels/QuickControls';
+import TelemetryPlots from '@/components/panels/TelemetryPlots';
+import ViewportControls from '@/components/panels/ViewportControls';
+
+// Pages
+import LogsPage from '@/components/pages/LogsPage';
+import PresetsPage from '@/components/pages/PresetsPage';
+import SettingsPage from '@/components/pages/SettingsPage';
+import HelpPage from '@/components/pages/HelpPage';
+import AboutPage from '@/components/pages/AboutPage';
+
+// Dynamically import Scene to avoid SSR issues
 const Scene = dynamic(() => import('@/components/3d/Scene'), { ssr: false });
-const OverviewCharts = dynamic(() => import('@/components/charts/SimulationCharts').then(m => m.OverviewCharts), { ssr: false });
-const FullCharts = dynamic(() => import('@/components/charts/SimulationCharts').then(m => m.FullCharts), { ssr: false });
 
 export default function DroneSimulator() {
+  // Activate simulation physics loop, keyboard shortcuts, and theme hook
   useSimulation();
   useKeyboardShortcuts();
+  useTheme();
 
-  const isRunning = useSimulationStore((s) => s.isRunning);
-  const toggleSimulation = useSimulationStore((s) => s.toggleSimulation);
-  const resetSimulation = useSimulationStore((s) => s.resetSimulation);
-  const exportCSV = useSimulationStore((s) => s.exportCSV);
-  const speed = useSimulationStore((s) => s.speed);
-  const setSpeed = useSimulationStore((s) => s.setSpeed);
-  const status = useSimulationStore((s) => s.status);
-  const time = useSimulationStore((s) => s.time);
-  const activeTab = useSimulationStore((s) => s.activeTab);
-  const setActiveTab = useSimulationStore((s) => s.setActiveTab);
+  const activePage = useSimulationStore((s) => s.activePage);
+  const sceneRef = useRef<{ fitCamera: () => void } | null>(null);
 
-  const statusColor: Record<string, string> = {
-    STOPPED: 'text-gray-400',
-    PAUSED: 'text-warning',
-    TRACKING: 'text-warning',
-    ON_TARGET: 'text-success',
+  const handleFitCamera = () => {
+    sceneRef.current?.fitCamera();
   };
 
-  const { width: panelWidth, onMouseDown: onResizeStart } = useResizable(500, 350, 800, 'drone-sim-panel-width');
-
   return (
-    <div className="h-screen flex flex-col bg-[#f4f6fb] overflow-hidden select-none">
-      {/* ===== HEADER BAR ===== */}
-      <header className="shrink-0 flex items-center gap-3 px-4 py-2 bg-white border-b border-border">
-        <span className="text-sm font-bold text-gray-800 whitespace-nowrap">DRONE CONTROL CENTER</span>
+    <div className="h-screen flex flex-col overflow-hidden select-none" style={{ background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
+      {/* HEADER BAR */}
+      <Header />
 
-        <div className="w-px h-5 bg-border" />
-
-        <button
-          onClick={toggleSimulation}
-          className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
-            isRunning
-              ? 'bg-warning text-white hover:bg-amber-600'
-              : 'bg-success text-white hover:bg-green-600'
-          }`}
-        >
-          {isRunning ? 'PAUSE' : 'START'}
-        </button>
-        <button
-          onClick={resetSimulation}
-          className="px-3 py-1 rounded text-xs font-bold bg-white border border-border hover:bg-gray-100 text-gray-700"
-        >
-          RESET
-        </button>
-        <button
-          onClick={exportCSV}
-          className="px-3 py-1 rounded text-xs font-bold bg-white border border-border hover:bg-gray-100 text-gray-700"
-        >
-          SAVE CSV
-        </button>
-
-        <div className="w-px h-5 bg-border" />
-
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-400">Speed</span>
-          <input
-            type="range"
-            min={0.1}
-            max={5}
-            step={0.1}
-            value={speed}
-            onChange={(e) => setSpeed(parseFloat(e.target.value))}
-            className="w-20 h-1"
-          />
-          <span className="text-xs font-mono text-gray-500 w-7">{speed.toFixed(1)}x</span>
-        </div>
-
-        <div className="flex-1" />
-
-        <span className={`text-xs font-bold ${statusColor[status]}`}>{status}</span>
-        <span className="text-xs text-gray-400 font-mono">t={time.toFixed(1)}s</span>
-      </header>
-
-      {/* ===== BODY ===== */}
+      {/* BODY AREA */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* ----- LEFT PANEL ----- */}
-        <aside
-          className="shrink-0 border-r border-border bg-white overflow-y-auto overflow-x-hidden"
-          style={{ width: panelWidth }}
-        >
-          <div className="p-4 space-y-3">
-            <ControlPanel />
-            <PIDController />
-            <DisturbanceControls />
-            <TelemetryDisplay />
-          </div>
-        </aside>
+        {/* LEFT SIDEBAR NAV */}
+        <Sidebar />
 
-        {/* ----- RESIZE HANDLE ----- */}
-        <div
-          onMouseDown={onResizeStart}
-          className="w-1 shrink-0 cursor-col-resize hover:bg-accent2/30 active:bg-accent2/50 transition-colors"
-        />
-
-        {/* ----- RIGHT PANEL ----- */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Tab bar */}
-          <div className="shrink-0 flex border-b border-border bg-white">
-            {(['overview', 'graphs'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-5 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-                  activeTab === tab
-                    ? 'text-accent2 border-b-2 border-accent2'
-                    : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {tab === 'overview' ? 'Overview' : 'Graphs'}
-              </button>
-            ))}
-          </div>
-
-          {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
-            {activeTab === 'overview' ? (
-              <div className="h-full flex">
-                {/* 3D View */}
-                <div className="flex-[1.2] flex flex-col min-w-0 border-r border-border">
-                  <div className="px-2 pt-2 pb-1">
-                    <span className="text-xs font-bold text-gray-400 uppercase">3D Drone View</span>
-                  </div>
-                  <div className="flex-1 mx-2 mb-2 rounded-lg overflow-hidden border border-border">
-                    <Scene />
+        {/* MAIN WORKSPACE CONTENT */}
+        <main className="flex-1 flex min-w-0 overflow-hidden">
+          {activePage === 'dashboard' && (
+            <div className="flex-1 flex overflow-hidden min-w-0">
+              {/* Left Column: 3D view + visual plots */}
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                {/* 3D View Area */}
+                <div className="flex-1 flex flex-col min-h-0 relative border-b border-border">
+                  <ViewportControls onFit={handleFitCamera} />
+                  <div className="flex-1 relative min-h-0">
+                    <Scene ref={sceneRef} />
                   </div>
                 </div>
 
-                {/* Right column: charts + motors */}
-                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                  <div className="px-3 pt-2 pb-1">
-                    <span className="text-xs font-bold text-gray-400 uppercase">System Response</span>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-3 pb-1">
-                    <OverviewCharts />
-                  </div>
-                  <div className="shrink-0 px-3 pb-2">
-                    <MotorDisplay />
-                  </div>
+                {/* Bottom Plots Strip */}
+                <div style={{ height: 260, minHeight: 200, maxHeight: 350, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+                  <TelemetryPlots />
                 </div>
+
+                {/* Quick Controls Bar */}
+                <QuickControls />
               </div>
-            ) : (
-              <div className="h-full overflow-y-auto p-3">
-                <span className="text-xs font-bold text-gray-400 uppercase block mb-2">
-                  System Response &mdash; Detailed View
-                </span>
-                <FullCharts />
+
+              {/* Parameters Panel on the Right */}
+              <ParametersPanel />
+            </div>
+          )}
+
+          {activePage === '3dview' && (
+            <div className="flex-1 flex flex-col min-w-0 h-full relative">
+              <ViewportControls onFit={handleFitCamera} />
+              <div className="flex-1 relative">
+                <Scene ref={sceneRef} />
               </div>
-            )}
-          </div>
-        </div>
+              <QuickControls />
+            </div>
+          )}
+
+          {activePage === 'parameters' && (
+            <div className="flex-1 flex overflow-hidden min-w-0 h-full">
+              <div className="flex-1 flex flex-col justify-center items-center text-center p-8 bg-secondary">
+                <span className="text-xl font-bold mb-2">Adjust Parameters in Sidebar</span>
+                <span className="text-sm text-muted">Use the sidebar parameters drawer in the main Dashboard tab or tune them directly.</span>
+              </div>
+              <ParametersPanel />
+            </div>
+          )}
+
+          {activePage === 'pid' && (
+            <div className="flex-1 flex overflow-hidden min-w-0 h-full">
+              <div className="flex-1 flex flex-col justify-center items-center text-center p-8 bg-secondary">
+                <span className="text-xl font-bold mb-2">Tuning Controller Coefficients</span>
+                <span className="text-sm text-muted">Select Preset or adjust individual axis gains directly in the Parameters Drawer.</span>
+              </div>
+              <ParametersPanel />
+            </div>
+          )}
+
+          {activePage === 'plots' && (
+            <div className="flex-1 flex flex-col min-w-0 h-full">
+              <div className="flex-1 overflow-hidden">
+                <TelemetryPlots />
+              </div>
+              <QuickControls />
+            </div>
+          )}
+
+          {activePage === 'logs' && (
+            <div className="flex-1 overflow-hidden h-full">
+              <LogsPage />
+            </div>
+          )}
+
+          {activePage === 'presets' && (
+            <div className="flex-1 overflow-hidden h-full">
+              <PresetsPage />
+            </div>
+          )}
+
+          {activePage === 'settings' && (
+            <div className="flex-1 overflow-hidden h-full">
+              <SettingsPage />
+            </div>
+          )}
+
+          {/* Fallback settings pages */}
+          {activePage as string === 'help' && (
+            <div className="flex-1 overflow-hidden h-full">
+              <HelpPage />
+            </div>
+          )}
+
+          {activePage as string === 'about' && (
+            <div className="flex-1 overflow-hidden h-full">
+              <AboutPage />
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );

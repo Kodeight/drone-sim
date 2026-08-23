@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Drone Simulator - 6-DOF Quadrotor Control',
-  description: 'Interactive 3D drone simulator with real-time PID tuning and telemetry',
+  title: 'Drone Simulator — Flight Dynamics Workstation',
+  description: 'Professional desktop flight dynamics simulator for 6-DOF multirotors.',
 };
 
 export default function RootLayout({
@@ -12,8 +12,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="h-full antialiased">{children}</body>
+    <html lang="en" className="dark">
+      <body>
+        <div id="root" className="h-full">
+          {children}
+        </div>
+      </body>
     </html>
   );
 }
