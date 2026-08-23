@@ -49,3 +49,6 @@ next-env.d.ts
 __pycache__/
 python/build/
 python/venv_build/
+
+
+*#.txt
