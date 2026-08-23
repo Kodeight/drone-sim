@@ -1,6 +1,8 @@
 {
   "name": "drone-simulator",
   "version": "1.0.0",
+  "description": "6-DOF Quadrotor Simulator with real-time PID tuning and 3D visualization",
+  "author": "Drone Simulator",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -50,12 +52,8 @@
       "electron/**/*"
     ],
     "win": {
-      "target": "nsis",
+      "target": "portable",
       "icon": "public/favicon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
     }
   }
 }
