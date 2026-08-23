@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useSimulation } from '@/hooks/useSimulation';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboard';
+import { useResizable } from '@/hooks/useResizable';
 import { useSimulationStore } from '@/store/simulationStore';
 import ControlPanel from '@/components/panels/ControlPanel';
 import PIDController from '@/components/panels/PIDController';
@@ -35,6 +36,8 @@ export default function DroneSimulator() {
     TRACKING: 'text-warning',
     ON_TARGET: 'text-success',
   };
+
+  const { width: panelWidth, onMouseDown: onResizeStart } = useResizable(420, 320, 700);
 
   return (
     <div className="h-screen flex flex-col bg-[#f4f6fb] overflow-hidden select-none">
@@ -92,14 +95,23 @@ export default function DroneSimulator() {
       {/* ===== BODY ===== */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* ----- LEFT PANEL ----- */}
-        <aside className="w-[360px] shrink-0 border-r border-border bg-white overflow-y-auto">
-          <div className="p-3 space-y-3">
+        <aside
+          className="shrink-0 border-r border-border bg-white overflow-y-auto overflow-x-hidden"
+          style={{ width: panelWidth }}
+        >
+          <div className="p-4 space-y-3">
             <ControlPanel />
             <PIDController />
             <DisturbanceControls />
             <TelemetryDisplay />
           </div>
         </aside>
+
+        {/* ----- RESIZE HANDLE ----- */}
+        <div
+          onMouseDown={onResizeStart}
+          className="w-1 shrink-0 cursor-col-resize hover:bg-accent2/30 active:bg-accent2/50 transition-colors"
+        />
 
         {/* ----- RIGHT PANEL ----- */}
         <div className="flex-1 flex flex-col min-w-0">

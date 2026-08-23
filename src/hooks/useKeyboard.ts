@@ -12,7 +12,7 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       switch (e.code) {
         case 'Space':
@@ -20,7 +20,9 @@ export function useKeyboardShortcuts() {
           toggleSimulation();
           break;
         case 'KeyR':
-          resetSimulation();
+          if (!e.ctrlKey && !e.metaKey) {
+            resetSimulation();
+          }
           break;
         case 'Equal':
         case 'NumpadAdd':

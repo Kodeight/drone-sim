@@ -54,6 +54,12 @@
     "win": {
       "target": "portable",
       "icon": "public/favicon.png"
-    }
+    },
+    "extraFiles": [
+      {
+        "from": "ffmpeg/ffmpeg.dll",
+        "to": "ffmpeg.dll"
+      }
+    ]
   }
 }

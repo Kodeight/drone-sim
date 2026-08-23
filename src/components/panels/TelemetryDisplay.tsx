@@ -22,11 +22,11 @@ export default function TelemetryDisplay() {
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
-      <div className="px-3 pt-2 pb-1.5">
-        <span className="text-xs font-bold text-accent2">TELEMETRY</span>
+      <div className="px-4 pt-2.5 pb-2">
+        <span className="text-[11px] font-bold text-accent2 uppercase tracking-wide">Telemetry</span>
       </div>
 
-      <div className="px-3 pb-2 grid grid-cols-3 gap-x-3 gap-y-0.5">
+      <div className="px-4 pb-2.5 grid grid-cols-3 gap-x-4 gap-y-1">
         {data.map((d) => (
           <div key={d.label} className="flex items-center justify-between text-xs h-5">
             <span className="text-gray-400">{d.label}</span>
@@ -38,9 +38,9 @@ export default function TelemetryDisplay() {
         ))}
       </div>
 
-      <div className="h-px bg-border mx-3" />
+      <div className="h-px bg-border mx-4" />
 
-      <div className="px-3 py-1.5 flex items-center justify-between">
+      <div className="px-4 py-2 flex items-center justify-between">
         <span className="text-xs text-gray-400">Distance to target</span>
         <span className="text-xs font-mono font-bold text-accent tabular-nums">{dist.toFixed(2)} m</span>
       </div>

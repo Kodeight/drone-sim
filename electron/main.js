@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
@@ -12,6 +12,7 @@ function createWindow() {
     minWidth: 1280,
     minHeight: 740,
     title: 'Drone Simulator',
+    icon: path.join(__dirname, '..', 'out', 'favicon.png'),
     backgroundColor: '#f4f6fb',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -22,11 +23,10 @@ function createWindow() {
     show: false,
   });
 
+  mainWindow.loadFile(path.join(__dirname, '..', 'out', 'index.html'));
+
   if (isDev) {
-    mainWindow.loadFile(path.join(__dirname, '..', 'out', 'index.html'));
     mainWindow.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'out', 'index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -41,18 +41,6 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  globalShortcut.register('Space', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('keyboard-shortcut', 'Space');
-    }
-  });
-
-  globalShortcut.register('R', () => {
-    if (mainWindow) {
-      mainWindow.webContents.send('keyboard-shortcut', 'R');
-    }
-  });
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -61,12 +49,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  globalShortcut.unregisterAll();
   if (process.platform !== 'darwin') {
     app.quit();
   }
-});
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
 });

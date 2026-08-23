@@ -45,6 +45,10 @@ next-env.d.ts
 # Misc
 *.local
 
+# Electron packaging
+ffmpeg/
+ffmpeg.zip
+
 # Python (legacy)
 __pycache__/
 python/build/
@@ -52,3 +56,5 @@ python/venv_build/
 
 
 *#.txt
+*diag.md
+*fix.md

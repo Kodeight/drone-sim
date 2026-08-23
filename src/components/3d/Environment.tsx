@@ -10,23 +10,23 @@ export default function Environment() {
       <directionalLight position={[-10, 10, -10]} intensity={0.3} />
 
       {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-        <shadowMaterial opacity={0.4} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+        <planeGeometry args={[200, 200]} />
+        <shadowMaterial opacity={0.3} />
       </mesh>
 
       {/* Grid */}
       <Grid
-        args={[40, 40]}
-        cellSize={1}
+        args={[200, 200]}
+        cellSize={6}
         cellThickness={0.5}
-        cellColor="#666"
-        sectionSize={5}
+        cellColor="#c8cdd8"
+        sectionSize={30}
         sectionThickness={1}
-        sectionColor="#444"
-        fadeDistance={40}
+        sectionColor="#a0a5b0"
+        fadeDistance={120}
         fadeStrength={1}
-        position={[0, 0.01, 0]}
+        position={[0, -0.04, 0]}
       />
     </>
   );
