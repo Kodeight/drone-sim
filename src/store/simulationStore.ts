@@ -4,12 +4,16 @@ import { PID } from '@/lib/simulation/PID';
 import { deg, rad, hypot } from '@/lib/utils/math';
 import {
   DroneState,
+  DroneConfig,
   TargetState,
   PIDState,
   PIDParams,
   DisturbanceState,
   HistoryData,
   SimulationStatus,
+  EnvironmentPreset,
+  DRONE_PRESETS,
+  ENVIRONMENT_PRESETS,
   MAX_HISTORY,
 } from '@/lib/simulation/types';
 
@@ -74,7 +78,7 @@ interface SimulationStore {
   theme: Theme;
   sidebarCollapsed: boolean;
   activePage: ActivePage;
-  activeTab: 'overview' | 'graphs'; // kept for compat
+  activeTab: 'overview' | 'graphs';
   cameraMode: CameraMode;
   showGrid: boolean;
   showAxes: boolean;
@@ -85,6 +89,13 @@ interface SimulationStore {
   // Physical + sim params
   physicalParams: PhysicalParams;
   simParams: SimParams;
+
+  // Drone config
+  currentDroneId: string;
+  droneConfig: DroneConfig;
+
+  // Environment config
+  currentEnvId: string;
 
   // Logs
   logs: LogEntry[];
@@ -125,6 +136,13 @@ interface SimulationStore {
   updatePhysicalParam: (key: keyof PhysicalParams, value: number) => void;
   updateSimParam: (key: keyof SimParams, value: number) => void;
 
+  // Drone config
+  selectDrone: (droneId: string) => void;
+
+  // Environment config
+  selectEnvironment: (envId: string) => void;
+  updateEnvironmentParam: (key: keyof PhysicalParams, value: number) => void;
+
   // Logs
   addLog: (level: LogEntry['level'], message: string) => void;
   clearLogs: () => void;
@@ -150,16 +168,19 @@ function createEmptyHistory(): HistoryData {
 
 // ─── Singleton physics objects ────────────────────────────────────────────────
 
-const drone = new Drone();
+const drone = new Drone(DRONE_PRESETS.cinematic);
 
 const pidControllers = {
-  X:     new PID(0.8,  0.02, 0.8,  3, 4),
-  Y:     new PID(0.8,  0.02, 0.8,  3, 4),
-  Z:     new PID(4.0,  1.0,  2.5,  5, 8),
-  Roll:  new PID(4.0,  0.08, 0.5,  1, 1),
-  Pitch: new PID(4.0,  0.08, 0.5,  1, 1),
-  Yaw:   new PID(2.5,  0.03, 0.4,  1, 1, true),
+  X:     new PID(0.8,  0.02, 0.8,  3, 4, false, 0.5),
+  Y:     new PID(0.8,  0.02, 0.8,  3, 4, false, 0.5),
+  Z:     new PID(4.0,  1.0,  2.5,  5, 8, false, 0.3),
+  Roll:  new PID(4.0,  0.08, 0.5,  1, 1, false, 0.2),
+  Pitch: new PID(4.0,  0.08, 0.5,  1, 1, false, 0.2),
+  Yaw:   new PID(2.5,  0.03, 0.4,  1, 1, true,  0.1),
 };
+
+// Rate damping gains (from PID2.py EnhancedController)
+const RATE_DAMPING = { roll: 0.05, pitch: 0.05, yaw: 0.03 };
 
 function recordHistory(
   history: HistoryData,
@@ -223,17 +244,17 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   cameraMode: 'orbit',
   showGrid: true,
   showAxes: true,
-  showTrajectory: true,
+  showTrajectory: false,
   showTarget: true,
   paramsPanelWidth: 360,
 
   // ── Physical + sim params ─────────────────────────────────────────────────
   physicalParams: {
-    mass:         1.25,
-    armLength:    0.25,
-    ixx:          0.00580,
-    iyy:          0.00580,
-    izz:          0.00920,
+    mass:         0.895,
+    armLength:    0.18,
+    ixx:          0.012,
+    iyy:          0.012,
+    izz:          0.022,
     gravity:      9.81,
     airDensity:   1.225,
     windSpeed:    0.00,
@@ -245,6 +266,13 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     substeps:          1,
     updateRate:        60,
   },
+
+  // ── Drone config ───────────────────────────────────────────────────────────
+  currentDroneId: 'cinematic',
+  droneConfig: DRONE_PRESETS.cinematic,
+
+  // ── Environment config ─────────────────────────────────────────────────────
+  currentEnvId: 'calm',
 
   // ── Logs ──────────────────────────────────────────────────────────────────
   logs: [
@@ -321,9 +349,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     for (const [axis, params] of Object.entries(preset)) {
       const controller = pidControllers[axis as keyof typeof pidControllers];
       if (controller) {
-        controller.kp = params.kp;
-        controller.ki = params.ki;
-        controller.kd = params.kd;
+        controller.setGains(params.kp, params.ki, params.kd);
       }
     }
     set({ pid: preset as PIDState });
@@ -334,27 +360,30 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const { target, disturbances, history, time } = get();
     const d = drone.state;
 
-    // Position control
+    // ── Position control (world-frame acceleration commands) ──────────────
     const axWorld = pidControllers.X.update(target.x, d.x, dt);
     const ayWorld = pidControllers.Y.update(target.y, d.y, dt);
 
+    // Transform to body frame
     const cosYaw = Math.cos(d.yaw);
     const sinYaw = Math.sin(d.yaw);
     const axBody =  cosYaw * axWorld + sinYaw * ayWorld;
     const ayBody = -sinYaw * axWorld + cosYaw * ayWorld;
 
-    // Position → attitude setpoints
-    const desiredPitchPos = Math.max(-rad(30), Math.min(rad(30),  axBody / drone.g));
-    const desiredRollPos  = Math.max(-rad(30), Math.min(rad(30), -ayBody / drone.g));
+    // ── Position → attitude setpoints ─────────────────────────────────────
+    const maxTilt = rad(drone.controlLimits.maxTiltAngle);
 
-    const desiredRoll  = Math.max(-rad(35), Math.min(rad(35), rad(target.roll)  + desiredRollPos));
-    const desiredPitch = Math.max(-rad(35), Math.min(rad(35), rad(target.pitch) + desiredPitchPos));
+    const desiredPitchPos = Math.max(-maxTilt, Math.min(maxTilt,  axBody / drone.g));
+    const desiredRollPos  = Math.max(-maxTilt, Math.min(maxTilt, -ayBody / drone.g));
 
-    // Attitude control
-    const rollTorque  = pidControllers.Roll.update(desiredRoll, d.roll, dt);
-    const pitchTorque = pidControllers.Pitch.update(desiredPitch, d.pitch, dt);
+    const desiredRoll  = Math.max(-maxTilt, Math.min(maxTilt, rad(target.roll)  + desiredRollPos));
+    const desiredPitch = Math.max(-maxTilt, Math.min(maxTilt, rad(target.pitch) + desiredPitchPos));
 
-    // Auto heading
+    // ── Attitude control with rate damping ────────────────────────────────
+    const rollTorque  = pidControllers.Roll.update(desiredRoll, d.roll, dt)  - RATE_DAMPING.roll  * d.p;
+    const pitchTorque = pidControllers.Pitch.update(desiredPitch, d.pitch, dt) - RATE_DAMPING.pitch * d.q;
+
+    // ── Auto heading ──────────────────────────────────────────────────────
     let yawTargetDeg = target.yaw;
     if (target.autoHeading) {
       const hSpeed = hypot(d.vx, d.vy);
@@ -369,13 +398,17 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       }
     }
 
-    const yawTorque = pidControllers.Yaw.update(rad(yawTargetDeg), d.yaw, dt);
+    const yawTorque = pidControllers.Yaw.update(rad(yawTargetDeg), d.yaw, dt) - RATE_DAMPING.yaw * d.r;
 
-    // Altitude
+    // ── Altitude ──────────────────────────────────────────────────────────
     const altitudeCommand = pidControllers.Z.update(target.z, d.z, dt);
-    const thrust = Math.max(0, drone.mass * drone.g + altitudeCommand);
+    let thrust = Math.max(0, drone.mass * drone.g + altitudeCommand);
 
-    // Step drone physics
+    // Thrust limit
+    const maxThrust = 4 * drone.maxMotorThrust;
+    thrust = Math.min(thrust, maxThrust);
+
+    // ── Step drone physics ────────────────────────────────────────────────
     drone.update(
       thrust, rollTorque, pitchTorque, yawTorque,
       disturbances.forceX, disturbances.forceY, disturbances.forceZ,
@@ -448,6 +481,91 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   updateSimParam: (key, value) =>
     set((s) => ({ simParams: { ...s.simParams, [key]: value } })),
+
+  // ── Drone config ──────────────────────────────────────────────────────────
+  selectDrone: (droneId) => {
+    const config = DRONE_PRESETS[droneId];
+    if (!config) return;
+
+    const wasRunning = get().isRunning;
+    if (wasRunning) {
+      get().addLog('SIMULATION', 'Simulation paused for drone change');
+      set({ isRunning: false });
+    }
+
+    drone.applyConfig(config);
+    drone.reset();
+    Object.values(pidControllers).forEach((p) => p.reset());
+
+    // Apply drone's built-in PID gains
+    const gainsMap: Record<string, keyof typeof pidControllers> = {
+      x: 'X', y: 'Y', z: 'Z', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw',
+    };
+    for (const [axis, gains] of Object.entries(config.pidGains)) {
+      const key = gainsMap[axis];
+      if (key && pidControllers[key]) {
+        pidControllers[key].setGains(gains[0], gains[1], gains[2]);
+      }
+    }
+
+    const pidState: PIDState = {
+      X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
+      Y:     { kp: config.pidGains.y?.[0] ?? 0.8,  ki: config.pidGains.y?.[1] ?? 0.02, kd: config.pidGains.y?.[2] ?? 0.8 },
+      Z:     { kp: config.pidGains.z?.[0] ?? 4.0,  ki: config.pidGains.z?.[1] ?? 1.0,  kd: config.pidGains.z?.[2] ?? 2.5 },
+      Roll:  { kp: config.pidGains.roll?.[0] ?? 4.0,  ki: config.pidGains.roll?.[1] ?? 0.08, kd: config.pidGains.roll?.[2] ?? 0.5 },
+      Pitch: { kp: config.pidGains.pitch?.[0] ?? 4.0, ki: config.pidGains.pitch?.[1] ?? 0.08, kd: config.pidGains.pitch?.[2] ?? 0.5 },
+      Yaw:   { kp: config.pidGains.yaw?.[0] ?? 2.5,  ki: config.pidGains.yaw?.[1] ?? 0.03, kd: config.pidGains.yaw?.[2] ?? 0.4 },
+    };
+
+    get().addLog('CONTROL', `Drone changed to ${config.name}`);
+    set({
+      currentDroneId: droneId,
+      droneConfig: config,
+      drone: { ...drone.state },
+      pid: pidState,
+      time: 0,
+      status: 'STOPPED',
+      history: createEmptyHistory(),
+      distanceToTarget: 0,
+      controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      physicalParams: {
+        mass: config.mass,
+        armLength: config.motor.armLength,
+        ixx: config.inertia.ix,
+        iyy: config.inertia.iy,
+        izz: config.inertia.iz,
+        gravity: 9.81,
+        airDensity: 1.225,
+        windSpeed: 0,
+        windDirection: 0,
+      },
+    });
+
+    if (wasRunning) {
+      set({ isRunning: true });
+      get().addLog('SIMULATION', 'Simulation resumed');
+    }
+  },
+
+  // ── Environment config ────────────────────────────────────────────────────
+  selectEnvironment: (envId) => {
+    const preset = ENVIRONMENT_PRESETS[envId];
+    if (!preset) return;
+    set((s) => ({
+      currentEnvId: envId,
+      physicalParams: {
+        ...s.physicalParams,
+        gravity: preset.gravity,
+        airDensity: preset.airDensity,
+        windSpeed: preset.windSpeed,
+        windDirection: preset.windDirection,
+      },
+    }));
+    get().addLog('SYSTEM', `Environment: ${preset.name}`);
+  },
+
+  updateEnvironmentParam: (key, value) =>
+    set((s) => ({ physicalParams: { ...s.physicalParams, [key]: value } })),
 
   // ── Logs ──────────────────────────────────────────────────────────────────
   addLog: (level, message) =>

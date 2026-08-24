@@ -1,23 +1,68 @@
 import { clamp, wrapAngle, rad } from '@/lib/utils/math';
-import type { DroneState } from './types';
+import type { DroneState, DroneConfig, MotorConfig, InertiaConfig, DragConfig, ControlLimits } from './types';
+
+function smoothDth(dt: number, tau: number): number {
+  if (tau <= 0) return 1.0;
+  return dt / (dt + tau);
+}
 
 export class Drone {
   state: DroneState;
 
-  readonly mass = 1.0;
-  readonly g = 9.81;
-  readonly Ix = 0.025;
-  readonly Iy = 0.025;
-  readonly Iz = 0.045;
-  readonly dragX = 0.30;
-  readonly dragY = 0.30;
-  readonly dragZ = 0.35;
-  readonly angularDrag = 0.08;
-  readonly armLength = 0.20;
-  readonly motorYawCoefficient = 0.02;
-  readonly maxMotorThrust = 6.0;
+  config: DroneConfig;
 
-  constructor() {
+  // Derived from config
+  mass: number;
+  g: number;
+  Ix: number;
+  Iy: number;
+  Iz: number;
+  dragX: number;
+  dragY: number;
+  dragZ: number;
+  angularDrag: number;
+  quadraticDragXY: number;
+  quadraticDragZ: number;
+  armLength: number;
+  motorYawCoefficient: number;
+  maxMotorThrust: number;
+  motorTimeConstant: number;
+  groundEffectStrength: number;
+  groundEffectHeight: number;
+  controlLimits: ControlLimits;
+
+  constructor(config?: DroneConfig) {
+    this.config = config ?? {
+      id: 'default', name: 'Default', description: '',
+      mass: 1.0,
+      inertia: { ix: 0.025, iy: 0.025, iz: 0.045 },
+      motor: { maxThrust: 6.0, timeConstant: 0.008, yawCoefficient: 0.02, armLength: 0.20 },
+      drag: { linearXY: 0.30, linearZ: 0.35, angular: 0.08, quadraticXY: 0.02, quadraticZ: 0.03 },
+      controlLimits: { maxTiltAngle: 35, maxRateRoll: 25, maxRatePitch: 25, maxRateYaw: 25, maxThrustRate: 8 },
+      groundEffectStrength: 0.3,
+      groundEffectHeight: 0.5,
+      pidGains: {},
+    };
+
+    this.mass = this.config.mass;
+    this.g = 9.81;
+    this.Ix = this.config.inertia.ix;
+    this.Iy = this.config.inertia.iy;
+    this.Iz = this.config.inertia.iz;
+    this.dragX = this.config.drag.linearXY;
+    this.dragY = this.config.drag.linearXY;
+    this.dragZ = this.config.drag.linearZ;
+    this.angularDrag = this.config.drag.angular;
+    this.quadraticDragXY = this.config.drag.quadraticXY;
+    this.quadraticDragZ = this.config.drag.quadraticZ;
+    this.armLength = this.config.motor.armLength;
+    this.motorYawCoefficient = this.config.motor.yawCoefficient;
+    this.maxMotorThrust = this.config.motor.maxThrust;
+    this.motorTimeConstant = this.config.motor.timeConstant;
+    this.groundEffectStrength = this.config.groundEffectStrength;
+    this.groundEffectHeight = this.config.groundEffectHeight;
+    this.controlLimits = this.config.controlLimits;
+
     this.state = this.createInitialState();
   }
 
@@ -33,6 +78,27 @@ export class Drone {
 
   reset(): void {
     this.state = this.createInitialState();
+  }
+
+  applyConfig(config: DroneConfig): void {
+    this.config = config;
+    this.mass = config.mass;
+    this.Ix = config.inertia.ix;
+    this.Iy = config.inertia.iy;
+    this.Iz = config.inertia.iz;
+    this.dragX = config.drag.linearXY;
+    this.dragY = config.drag.linearXY;
+    this.dragZ = config.drag.linearZ;
+    this.angularDrag = config.drag.angular;
+    this.quadraticDragXY = config.drag.quadraticXY;
+    this.quadraticDragZ = config.drag.quadraticZ;
+    this.armLength = config.motor.armLength;
+    this.motorYawCoefficient = config.motor.yawCoefficient;
+    this.maxMotorThrust = config.motor.maxThrust;
+    this.motorTimeConstant = config.motor.timeConstant;
+    this.groundEffectStrength = config.groundEffectStrength;
+    this.groundEffectHeight = config.groundEffectHeight;
+    this.controlLimits = config.controlLimits;
   }
 
   // Rotation matrix body -> world (ZYX Euler)
@@ -57,6 +123,36 @@ export class Drone {
     ];
   }
 
+  private computeDrag(vx: number, vy: number, vz: number): [number, number, number] {
+    const vH = Math.hypot(vx, vy);
+    const dragXLin = this.dragX * vx;
+    const dragYLin = this.dragY * vy;
+    const dragZLin = this.dragZ * vz;
+
+    let dragXQuad = 0, dragYQuad = 0, dragZQuad = 0;
+    if (vH > 0.001) {
+      dragXQuad = this.quadraticDragXY * vH * vx;
+      dragYQuad = this.quadraticDragXY * vH * vy;
+    }
+    if (Math.abs(vz) > 0.001) {
+      dragZQuad = this.quadraticDragZ * Math.abs(vz) * vz;
+    }
+
+    return [
+      -(dragXLin + dragXQuad),
+      -(dragYLin + dragYQuad),
+      -(dragZLin + dragZQuad),
+    ];
+  }
+
+  private computeGroundEffect(): number {
+    if (this.state.z <= 0) return 1.0;
+    if (this.state.z < this.groundEffectHeight) {
+      return 1.0 + this.groundEffectStrength * (1.0 - this.state.z / this.groundEffectHeight);
+    }
+    return 1.0;
+  }
+
   mixAndSaturate(
     thrust: number,
     rollTorque: number,
@@ -71,15 +167,21 @@ export class Drone {
     const m3 = thrust / 4 - rollTorque / (4 * l) - pitchTorque / (4 * l) - yawTorque / (4 * k);
     const m4 = thrust / 4 + rollTorque / (4 * l) - pitchTorque / (4 * l) + yawTorque / (4 * k);
 
-    const motors: [number, number, number, number] = [
+    const commands: [number, number, number, number] = [
       clamp(m1, 0, this.maxMotorThrust),
       clamp(m2, 0, this.maxMotorThrust),
       clamp(m3, 0, this.maxMotorThrust),
       clamp(m4, 0, this.maxMotorThrust),
     ];
 
-    this.state.motorThrusts = motors;
+    // Motor dynamics: low-pass filter
+    const alpha = smoothDth(0.01, this.motorTimeConstant);
+    for (let i = 0; i < 4; i++) {
+      this.state.motorThrusts[i] += (commands[i] - this.state.motorThrusts[i]) * alpha;
+    }
 
+    // Re-derive actual forces from filtered values
+    const motors = this.state.motorThrusts;
     const thrustActual = motors[0] + motors[1] + motors[2] + motors[3];
     const rollActual = l * (-motors[0] + motors[1] - motors[2] + motors[3]);
     const pitchActual = l * (motors[0] + motors[1] - motors[2] - motors[3]);
@@ -113,9 +215,9 @@ export class Drone {
     const yawAcc =
       (mixed.yawTorque + distYaw - this.angularDrag * d.r + (this.Ix - this.Iy) * d.p * d.q) / this.Iz;
 
-    d.p = clamp(d.p + rollAcc * dt, -25, 25);
-    d.q = clamp(d.q + pitchAcc * dt, -25, 25);
-    d.r = clamp(d.r + yawAcc * dt, -25, 25);
+    d.p = clamp(d.p + rollAcc * dt, -this.controlLimits.maxRateRoll, this.controlLimits.maxRateRoll);
+    d.q = clamp(d.q + pitchAcc * dt, -this.controlLimits.maxRatePitch, this.controlLimits.maxRatePitch);
+    d.r = clamp(d.r + yawAcc * dt, -this.controlLimits.maxRateYaw, this.controlLimits.maxRateYaw);
 
     // Body rates -> Euler angle rates
     let cosPitch = Math.cos(d.pitch);
@@ -129,17 +231,26 @@ export class Drone {
     const yawDot = (sinRoll / cosPitch) * d.q + (cosRoll / cosPitch) * d.r;
 
     d.roll = wrapAngle(d.roll + rollDot * dt);
-    d.pitch = clamp(d.pitch + pitchDot * dt, rad(-89), rad(89));
+
+    const maxTilt = rad(this.controlLimits.maxTiltAngle);
+    d.pitch = clamp(d.pitch + pitchDot * dt, -maxTilt, maxTilt);
     d.yaw = wrapAngle(d.yaw + yawDot * dt);
 
     // Thrust -> world frame
     const R = this.rotationMatrix();
     const thrustWorld = this.matVecMul(R, [0, 0, mixed.thrust]);
 
+    // Ground effect
+    const groundEffect = this.computeGroundEffect();
+    thrustWorld[2] *= groundEffect;
+
+    // Non-linear drag
+    const [dragFx, dragFy, dragFz] = this.computeDrag(d.vx, d.vy, d.vz);
+
     // Translational forces
-    const fx = thrustWorld[0] - this.dragX * d.vx + distX;
-    const fy = thrustWorld[1] - this.dragY * d.vy + distY;
-    const fz = thrustWorld[2] - this.mass * this.g - this.dragZ * d.vz + distZ;
+    const fx = thrustWorld[0] + dragFx + distX;
+    const fy = thrustWorld[1] + dragFy + distY;
+    const fz = thrustWorld[2] - this.mass * this.g + dragFz + distZ;
 
     d.vx = clamp(d.vx + (fx / this.mass) * dt, -15, 15);
     d.vy = clamp(d.vy + (fy / this.mass) * dt, -15, 15);

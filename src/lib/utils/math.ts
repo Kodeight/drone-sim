@@ -14,6 +14,7 @@ export function deg(radValue: number): number {
   return (radValue * 180) / Math.PI;
 }
 
-export function hypot(x: number, y: number): number {
+export function hypot(x: number, y: number, z?: number): number {
+  if (z !== undefined) return Math.sqrt(x * x + y * y + z * z);
   return Math.sqrt(x * x + y * y);
 }

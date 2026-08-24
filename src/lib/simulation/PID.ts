@@ -6,12 +6,14 @@ export class PID {
   kd: number;
   integralLimit: number;
   outputLimit: number;
+  outputRateLimit: number;
   angle: boolean;
+  feedforwardGain: number;
 
   private integral: number;
   private previousMeasurement: number;
+  private previousOutput: number;
   private initialized: boolean;
-  private lastOutput: number;
 
   constructor(
     kp: number,
@@ -19,29 +21,39 @@ export class PID {
     kd: number,
     integralLimit: number = 10.0,
     outputLimit: number = 10.0,
-    angle: boolean = false
+    angle: boolean = false,
+    feedforwardGain: number = 0.0,
+    outputRateLimit: number = Infinity,
   ) {
     this.kp = kp;
     this.ki = ki;
     this.kd = kd;
     this.integralLimit = integralLimit;
     this.outputLimit = outputLimit;
+    this.outputRateLimit = outputRateLimit;
     this.angle = angle;
+    this.feedforwardGain = feedforwardGain;
     this.integral = 0.0;
     this.previousMeasurement = 0.0;
+    this.previousOutput = 0.0;
     this.initialized = false;
-    this.lastOutput = 0.0;
   }
 
   reset(): void {
     this.integral = 0.0;
     this.previousMeasurement = 0.0;
+    this.previousOutput = 0.0;
     this.initialized = false;
-    this.lastOutput = 0.0;
   }
 
-  update(setpoint: number, measurement: number, dt: number): number {
-    if (dt <= 0) return this.lastOutput;
+  setGains(kp: number, ki: number, kd: number): void {
+    this.kp = kp;
+    this.ki = ki;
+    this.kd = kd;
+  }
+
+  update(setpoint: number, measurement: number, dt: number, feedforward: number = 0): number {
+    if (dt <= 0) return this.previousOutput;
 
     const error = this.angle
       ? wrapAngle(setpoint - measurement)
@@ -73,14 +85,22 @@ export class PID {
       this.integral = tentativeIntegral;
     }
 
-    const output = clamp(
-      this.kp * error + this.ki * this.integral + this.kd * derivative,
-      -this.outputLimit,
-      this.outputLimit
-    );
+    let output =
+      this.kp * error + this.ki * this.integral + this.kd * derivative;
+
+    // Feed-forward
+    output += feedforward * this.feedforwardGain;
+
+    // Output rate limiting
+    if (this.outputRateLimit < Infinity) {
+      const maxChange = this.outputRateLimit * dt;
+      output = clamp(output, this.previousOutput - maxChange, this.previousOutput + maxChange);
+    }
+
+    output = clamp(output, -this.outputLimit, this.outputLimit);
 
     this.previousMeasurement = measurement;
-    this.lastOutput = output;
+    this.previousOutput = output;
     return output;
   }
 }
