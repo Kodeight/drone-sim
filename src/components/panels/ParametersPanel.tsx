@@ -2,8 +2,9 @@
 
 import { useRef, useCallback, useEffect } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
-import { PID_PRESETS, DRONE_PRESETS, type PIDAxis } from '@/lib/simulation/types';
+import { PID_PRESETS } from '@/lib/simulation/types';
 import SliderInput from '@/components/ui/SliderInput';
+import DroneTypeSelector from '@/components/ui/DroneTypeSelector';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -19,8 +20,6 @@ export default function ParametersPanel() {
   const target          = useSimulationStore((s) => s.target);
   const updateTarget    = useSimulationStore((s) => s.updateTarget);
   const applyPreset     = useSimulationStore((s) => s.applyPreset);
-  const currentDroneId  = useSimulationStore((s) => s.currentDroneId);
-  const selectDrone     = useSimulationStore((s) => s.selectDrone);
 
   // Load persisted width
   useEffect(() => {
@@ -165,47 +164,11 @@ export default function ParametersPanel() {
 
           <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
 
-          {/* ── Drone Type ─────────────────────────────────────────── */}
+          {/* ── Drone Type ─────────────────────────────────── */}
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', padding: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Drone Type
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 4 }}>
-            {Object.entries(DRONE_PRESETS).map(([id, cfg]) => {
-              const active = currentDroneId === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => selectDrone(id)}
-                  style={{
-                    padding: '6px 4px',
-                    fontSize: 10,
-                    fontWeight: 600,
-                    background: active ? 'var(--accent)' : 'var(--bg-secondary)',
-                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                    borderRadius: 4,
-                    color: active ? '#fff' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    transition: 'all 0.15s',
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {cfg.name}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Active drone info ──────────────────────────────────── */}
-          <div style={{
-            marginTop: 6, padding: '6px 8px', borderRadius: 5,
-            background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
-            fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5,
-          }}>
-            <span style={{ fontWeight: 700, color: 'var(--accent2)' }}>{droneConfig.name}</span>
-            {' — '}
-            {droneConfig.mass} kg, {droneConfig.motor.maxThrust}N max
-          </div>
+          <DroneTypeSelector />
 
         </div>
       </div>

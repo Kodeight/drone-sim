@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from 'react';
 
-function ShimmerBar({ width, height = 12, delay = 0 }: { width: string; height?: number; delay?: number }) {
+function Shimmer({ style }: { style?: React.CSSProperties }) {
   return (
     <div style={{
-      width, height, borderRadius: 6,
+      borderRadius: 4,
       background: 'var(--bg-secondary)',
       position: 'relative', overflow: 'hidden',
+      ...style,
     }}>
       <div style={{
         position: 'absolute', inset: 0,
         background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
-        animation: `shimmer 1.8s ease-in-out ${delay}s infinite`,
+        animation: 'shimmer 1.8s ease-in-out infinite',
       }} />
     </div>
   );
@@ -30,63 +31,171 @@ export default function SkeletonLoader({ message }: { message?: string }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
+      width: '100vw', height: '100vh',
       background: 'var(--bg-app)',
       display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 24,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      color: 'var(--text-primary)',
     }}>
       <style>{`
         @keyframes shimmer {
           0%, 100% { transform: translateX(-100%); }
           50% { transform: translateX(100%); }
         }
-        @keyframes pulse-ring {
-          0% { transform: scale(0.8); opacity: 0.5; }
-          50% { transform: scale(1.2); opacity: 1; }
-          100% { transform: scale(0.8); opacity: 0.5; }
-        }
       `}</style>
 
-      {/* Drone icon */}
-      <div style={{ position: 'relative', width: 64, height: 64 }}>
-        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" style={{ color: 'var(--accent)' }}>
-          <rect x="24" y="24" width="16" height="16" rx="3" fill="currentColor" opacity="0.2" />
-          <rect x="24" y="24" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
-          <line x1="24" y1="32" x2="10" y2="22" stroke="currentColor" strokeWidth="1.5" />
-          <line x1="40" y1="32" x2="54" y2="22" stroke="currentColor" strokeWidth="1.5" />
-          <line x1="24" y1="32" x2="10" y2="42" stroke="currentColor" strokeWidth="1.5" />
-          <line x1="40" y1="32" x2="54" y2="42" stroke="currentColor" strokeWidth="1.5" />
-          <circle cx="10" cy="22" r="5" fill="currentColor" opacity="0.15" style={{ animation: 'pulse-ring 1.2s ease-in-out infinite' }} />
-          <circle cx="54" cy="22" r="5" fill="currentColor" opacity="0.15" style={{ animation: 'pulse-ring 1.2s ease-in-out 0.3s infinite' }} />
-          <circle cx="10" cy="42" r="5" fill="currentColor" opacity="0.15" style={{ animation: 'pulse-ring 1.2s ease-in-out 0.6s infinite' }} />
-          <circle cx="54" cy="42" r="5" fill="currentColor" opacity="0.15" style={{ animation: 'pulse-ring 1.2s ease-in-out 0.9s infinite' }} />
-        </svg>
+      {/* ── Header ─────────────────────────────────────────── */}
+      <div style={{
+        height: 44, flexShrink: 0,
+        background: 'var(--bg-panel)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12,
+      }}>
+        <Shimmer style={{ width: 28, height: 28 }} />
+        <Shimmer style={{ width: 100, height: 14 }} />
+        <div style={{ flex: 1 }} />
+        <Shimmer style={{ width: 60, height: 12 }} />
+        <Shimmer style={{ width: 60, height: 12 }} />
+        <Shimmer style={{ width: 60, height: 12 }} />
+        <div style={{ flex: 1 }} />
+        <Shimmer style={{ width: 20, height: 20 }} />
       </div>
 
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-          {message ?? 'Loading Drone Simulator'}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* ── Sidebar ──────────────────────────────────────── */}
+        <div style={{
+          width: 200, flexShrink: 0,
+          background: 'var(--bg-panel)',
+          borderRight: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', padding: '8px 6px', gap: 4,
+        }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Shimmer key={i} style={{ width: '100%', height: 32 }} />
+          ))}
+          <div style={{ flex: 1 }} />
+          <Shimmer style={{ width: '60%', height: 10, margin: '0 auto' }} />
+          <Shimmer style={{ width: '40%', height: 10, margin: '0 auto' }} />
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-          {dots || '\u00A0'}
+
+        {/* ── Main content ─────────────────────────────────── */}
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+            {/* 3D viewport area */}
+            <div style={{ flex: 1, position: 'relative', background: '#0f1117' }}>
+              {/* Viewport controls bar */}
+              <div style={{
+                position: 'absolute', top: 8, left: 8, right: 8,
+                display: 'flex', gap: 6, zIndex: 1,
+              }}>
+                <Shimmer style={{ width: 28, height: 24, borderRadius: 4 }} />
+                <Shimmer style={{ width: 28, height: 24, borderRadius: 4 }} />
+                <Shimmer style={{ width: 28, height: 24, borderRadius: 4 }} />
+              </div>
+              {/* Bottom quick controls */}
+              <div style={{
+                position: 'absolute', bottom: 8, left: 8, right: 8,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <Shimmer style={{ width: 32, height: 24, borderRadius: 4 }} />
+                <Shimmer style={{ width: 24, height: 24, borderRadius: 4 }} />
+                <Shimmer style={{ width: 80, height: 6, borderRadius: 3 }} />
+                <Shimmer style={{ width: 40, height: 12 }} />
+              </div>
+            </div>
+
+            {/* Telemetry plots area */}
+            <div style={{
+              height: 220, flexShrink: 0,
+              borderTop: '1px solid var(--border)',
+              background: 'var(--bg-panel)',
+              padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Shimmer style={{ width: 50, height: 10 }} />
+                <Shimmer style={{ width: 50, height: 10 }} />
+                <Shimmer style={{ width: 50, height: 10 }} />
+              </div>
+              <div style={{ flex: 1, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                {Array.from({ length: 40 }).map((_, i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                    <Shimmer style={{ width: '100%', height: `${20 + Math.sin(i * 0.5) * 15 + Math.random() * 10}px`, borderRadius: '2px 2px 0 0' }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Right panel (Controls) ────────────────────── */}
+          <div style={{
+            width: 360, flexShrink: 0,
+            background: 'var(--bg-panel)',
+            borderLeft: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Panel header */}
+            <div style={{
+              padding: '10px 14px 8px',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              <Shimmer style={{ width: 60, height: 10 }} />
+            </div>
+
+            <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
+              {/* Target Position */}
+              <Shimmer style={{ width: 90, height: 10 }} />
+              {[1, 2, 3].map((i) => (
+                <div key={`pos-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Shimmer style={{ width: 16, height: 10 }} />
+                  <Shimmer style={{ flex: 1, height: 6 }} />
+                  <Shimmer style={{ width: 40, height: 16, borderRadius: 3 }} />
+                </div>
+              ))}
+
+              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
+              {/* Target Attitude */}
+              <Shimmer style={{ width: 100, height: 10 }} />
+              {[1, 2, 3].map((i) => (
+                <div key={`att-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Shimmer style={{ width: 24, height: 10 }} />
+                  <Shimmer style={{ flex: 1, height: 6 }} />
+                  <Shimmer style={{ width: 40, height: 16, borderRadius: 3 }} />
+                </div>
+              ))}
+
+              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
+              {/* PID Presets */}
+              <Shimmer style={{ width: 80, height: 10 }} />
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[1, 2, 3].map((i) => (
+                  <Shimmer key={`pid-${i}`} style={{ flex: 1, height: 26, borderRadius: 4 }} />
+                ))}
+              </div>
+
+              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
+              {/* Drone Type dropdown */}
+              <Shimmer style={{ width: 70, height: 10 }} />
+              <Shimmer style={{ width: '100%', height: 30, borderRadius: 4 }} />
+              <Shimmer style={{ width: '80%', height: 10 }} />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Skeleton layout preview */}
-      <div style={{ width: 400, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <ShimmerBar width="100%" height={8} delay={0} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <ShimmerBar width="60px" height={28} delay={0.1} />
-          <ShimmerBar width="60px" height={28} delay={0.15} />
-          <ShimmerBar width="60px" height={28} delay={0.2} />
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <ShimmerBar width="100%" height={40} delay={0.25} />
-          <ShimmerBar width="100%" height={40} delay={0.3} />
-          <ShimmerBar width="100%" height={40} delay={0.35} />
-        </div>
-        <ShimmerBar width="100%" height={8} delay={0.4} />
+      {/* Loading message */}
+      <div style={{
+        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+        padding: '8px 20px', borderRadius: 8,
+        background: 'var(--bg-panel)', border: '1px solid var(--border)',
+        fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+        fontFamily: 'JetBrains Mono, monospace',
+      }}>
+        {message || 'Loading'}{dots || '\u00A0'}
       </div>
     </div>
   );

@@ -93,6 +93,7 @@ interface SimulationStore {
   // Drone config
   currentDroneId: string;
   droneConfig: DroneConfig;
+  customDrone: DroneConfig;
 
   // Environment config
   currentEnvId: string;
@@ -138,6 +139,8 @@ interface SimulationStore {
 
   // Drone config
   selectDrone: (droneId: string) => void;
+  updateCustomDrone: (path: string, value: number) => void;
+  applyCustomDrone: () => void;
 
   // Environment config
   selectEnvironment: (envId: string) => void;
@@ -270,6 +273,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   // ── Drone config ───────────────────────────────────────────────────────────
   currentDroneId: 'cinematic',
   droneConfig: DRONE_PRESETS.cinematic,
+  customDrone: { ...DRONE_PRESETS.cinematic, id: 'custom', name: 'Custom' },
 
   // ── Environment config ─────────────────────────────────────────────────────
   currentEnvId: 'calm',
@@ -541,6 +545,66 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       },
     });
 
+    if (wasRunning) {
+      set({ isRunning: true });
+      get().addLog('SIMULATION', 'Simulation resumed');
+    }
+  },
+
+  updateCustomDrone: (path, value) => {
+    set((s) => {
+      const drone = { ...s.customDrone };
+      const parts = path.split('.');
+      let obj: any = drone;
+      for (let i = 0; i < parts.length - 1; i++) {
+        obj[parts[i]] = { ...obj[parts[i]] };
+        obj = obj[parts[i]];
+      }
+      obj[parts[parts.length - 1]] = value;
+      return { customDrone: drone };
+    });
+  },
+
+  applyCustomDrone: () => {
+    const config = get().customDrone;
+    const wasRunning = get().isRunning;
+    if (wasRunning) {
+      set({ isRunning: false });
+    }
+    drone.applyConfig(config);
+    drone.reset();
+    Object.values(pidControllers).forEach((p) => p.reset());
+    const gainsMap: Record<string, keyof typeof pidControllers> = {
+      x: 'X', y: 'Y', z: 'Z', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw',
+    };
+    for (const [axis, gains] of Object.entries(config.pidGains)) {
+      const key = gainsMap[axis];
+      if (key && pidControllers[key]) {
+        pidControllers[key].setGains(gains[0], gains[1], gains[2]);
+      }
+    }
+    get().addLog('CONTROL', `Custom drone applied`);
+    set({
+      currentDroneId: 'custom',
+      droneConfig: config,
+      drone: { ...drone.state },
+      time: 0,
+      status: 'STOPPED',
+      history: createEmptyHistory(),
+      distanceToTarget: 0,
+      controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      physicalParams: {
+        mass: config.mass,
+        armLength: config.motor.armLength,
+        ixx: config.inertia.ix,
+        iyy: config.inertia.iy,
+        izz: config.inertia.iz,
+        gravity: 9.81,
+        airDensity: 1.225,
+        windSpeed: 0,
+        windDirection: 0,
+      },
+    });
     if (wasRunning) {
       set({ isRunning: true });
       get().addLog('SIMULATION', 'Simulation resumed');

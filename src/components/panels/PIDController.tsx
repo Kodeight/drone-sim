@@ -1,8 +1,9 @@
 'use client';
 
 import { useSimulationStore } from '@/store/simulationStore';
-import { PID_PRESETS, DRONE_PRESETS, type PIDAxis } from '@/lib/simulation/types';
+import { PID_PRESETS, type PIDAxis } from '@/lib/simulation/types';
 import SliderInput from '@/components/ui/SliderInput';
+import DroneTypeSelector from '@/components/ui/DroneTypeSelector';
 
 const AXES: PIDAxis[] = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw'];
 
@@ -35,9 +36,6 @@ export default function PIDController() {
   const pid = useSimulationStore((s) => s.pid);
   const updatePID = useSimulationStore((s) => s.updatePID);
   const applyPreset = useSimulationStore((s) => s.applyPreset);
-  const currentDroneId = useSimulationStore((s) => s.currentDroneId);
-  const droneConfig = useSimulationStore((s) => s.droneConfig);
-  const selectDrone = useSimulationStore((s) => s.selectDrone);
 
   const activePreset = detectActivePreset(pid);
 
@@ -100,46 +98,16 @@ export default function PIDController() {
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
-          CENTER: Active drone info (always visible)
+          CENTER: Active drone info + dropdown
          ════════════════════════════════════════════════════════════════ */}
       <div style={{
         marginBottom: 16, padding: '10px 16px', borderRadius: 8,
         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
       }}>
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: 6 }}>
           Active Drone
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>
-          {droneConfig.name}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-          {droneConfig.mass} kg &middot; TWR {(4 * droneConfig.motor.maxThrust / (droneConfig.mass * 9.81)).toFixed(1)} &middot; {droneConfig.motor.maxThrust}N/motor
-        </div>
-        <div style={{ flex: 1 }} />
-        {/* Mini drone type selector inline */}
-        <div style={{ display: 'flex', gap: 3 }}>
-          {Object.entries(DRONE_PRESETS).map(([id, cfg]) => {
-            const active = currentDroneId === id;
-            return (
-              <button
-                key={id}
-                onClick={() => selectDrone(id)}
-                title={cfg.name}
-                style={{
-                  padding: '3px 8px', fontSize: 9, fontWeight: 600,
-                  background: active ? 'var(--accent)' : 'transparent',
-                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 3,
-                  color: active ? '#fff' : 'var(--text-muted)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}
-              >
-                {cfg.name}
-              </button>
-            );
-          })}
-        </div>
+        <DroneTypeSelector />
       </div>
 
       {/* ════════════════════════════════════════════════════════════════
