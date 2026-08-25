@@ -21,6 +21,8 @@ export default function ParametersPanel() {
   const updateTarget    = useSimulationStore((s) => s.updateTarget);
   const applyPreset     = useSimulationStore((s) => s.applyPreset);
 
+  const currentDroneId  = useSimulationStore((s) => s.currentDroneId);
+
   // Load persisted width
   useEffect(() => {
     const stored = localStorage.getItem('drone-sim-params-width');
@@ -62,8 +64,6 @@ export default function ParametersPanel() {
       window.removeEventListener('mouseup', onUp);
     };
   }, [setPanelWidth]);
-
-  const droneConfig = DRONE_PRESETS[currentDroneId];
 
   return (
     <div style={{ display: 'flex', flexShrink: 0 }}>

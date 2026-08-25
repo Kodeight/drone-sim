@@ -5,10 +5,6 @@ import { useSimulationStore } from '@/store/simulationStore';
 import { DRONE_PRESETS } from '@/lib/simulation/types';
 import SliderInput from '@/components/ui/SliderInput';
 
-const CUSTOM_STYLE: React.CSSProperties = {
-  position: 'relative',
-};
-
 export default function DroneTypeSelector() {
   const currentDroneId = useSimulationStore((s) => s.currentDroneId);
   const droneConfig = useSimulationStore((s) => s.droneConfig);
@@ -47,17 +43,17 @@ export default function DroneTypeSelector() {
             padding: '7px 10px',
             fontSize: 12,
             fontWeight: 600,
-            background: isCustom ? 'rgba(245,158,11,0.1)' : 'var(--bg-secondary)',
-            border: `1px solid ${isCustom ? 'rgba(245,158,11,0.4)' : 'var(--border)'}`,
+            background: isCustom ? 'rgba(37,99,235,0.1)' : 'var(--bg-secondary)',
+            border: `1px solid ${isCustom ? 'rgba(37,99,235,0.4)' : 'var(--border)'}`,
             borderRadius: 5,
-            color: isCustom ? 'var(--warning)' : 'var(--text-primary)',
+            color: isCustom ? 'var(--accent)' : 'var(--text-primary)',
             cursor: 'pointer',
             outline: 'none',
             appearance: 'none',
             WebkitAppearance: 'none',
           }}
         >
-          {Object.entries(DRONE_PRESETS).map(([id, cfg]) => (
+          {Object.entries(DRONE_PRESETS).filter(([id]) => id !== 'custom').map(([id, cfg]) => (
             <option key={id} value={id}>{cfg.name}</option>
           ))}
           <option value="custom">Custom...</option>
@@ -76,7 +72,7 @@ export default function DroneTypeSelector() {
         background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
         fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 4,
       }}>
-        <span style={{ fontWeight: 700, color: isCustom ? 'var(--warning)' : 'var(--accent2)' }}>
+        <span style={{ fontWeight: 700, color: isCustom ? 'var(--accent)' : 'var(--accent2)' }}>
           {droneConfig.name}
         </span>
         {' — '}
@@ -90,7 +86,7 @@ export default function DroneTypeSelector() {
           borderTop: '1px solid var(--border)',
           marginTop: 4,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--warning)', marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)', marginBottom: 6 }}>
             Custom Configuration
           </div>
 
@@ -126,12 +122,15 @@ export default function DroneTypeSelector() {
           {/* Apply button */}
           <button
             onClick={handleApplyCustom}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#1d4ed8'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)'; }}
             style={{
               width: '100%', marginTop: 8,
               padding: '7px 0', fontSize: 11, fontWeight: 700,
-              background: 'var(--warning)',
+              background: 'var(--accent)',
               border: 'none', borderRadius: 5,
               color: '#fff', cursor: 'pointer',
+              transition: 'background 0.15s',
             }}
           >
             Apply Custom Drone
