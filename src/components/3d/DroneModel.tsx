@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -60,8 +60,13 @@ function findPropellers(scene: THREE.Object3D): THREE.Object3D[] {
   return found.slice(0, 4);
 }
 
-/** CW: +Y rotation; CCW: -Y rotation */
-const PROP_DIRECTIONS = [1, -1, -1, 1]; // M1 CW, M2 CCW, M3 CCW, M4 CW (X config)
+/**
+ * X-config quadrotor propeller rotation directions.
+ * M1 (Front Left):  CW   M2 (Front Right): CCW
+ * M3 (Rear Left):   CCW  M4 (Rear Right):  CW
+ * CW = +Y rotation, CCW = -Y rotation (when viewed from above)
+ */
+const PROP_DIRECTIONS = [1, -1, -1, 1];
 
 // ─── Camera fit utility ───────────────────────────────────────────────────────
 
@@ -85,8 +90,8 @@ export function fitCameraToBox(
 
   const distance = (radius * margin) / Math.sin(effectiveFov / 2);
 
-  // Position camera at isometric-style angle
-  const dir = new THREE.Vector3(1.2, 0.8, 1.2).normalize();
+  // Position camera at elevated isometric angle for clear vertical visibility
+  const dir = new THREE.Vector3(1.0, 1.0, 1.0).normalize();
   camera.position.copy(center).addScaledVector(dir, distance);
   camera.near = distance * 0.01;
   camera.far  = distance * 100;
@@ -106,8 +111,9 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
 
   const drone       = useSimulationStore((s) => s.drone);
   const cameraMode  = useSimulationStore((s) => s.cameraMode);
+  const isRunning   = useSimulationStore((s) => s.isRunning);
 
-  const { camera, scene } = useThree();
+  const { camera } = useThree();
 
   // Refs
   const calibGroupRef  = useRef<THREE.Group>(null);   // model centering
@@ -160,22 +166,27 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
 
     const { x, y, z, roll, pitch, yaw } = drone;
 
-    // Map sim coords → scene coords
-    // Simulator: x=forward, y=left, z=up (NED-ish)
-    // Three.js:  x=right,   y=up,   z=back
-    // We do: scene.x = sim.x, scene.y = sim.z, scene.z = -sim.y
-    simGroupRef.current.position.set(x, z, -y);
+    // ── Coordinate mapping (sim → Three.js) ──────────────────────────────
+    // Simulator: x=forward, y=left, z=up
+    // Three.js:  x=right,   y=up,   z=back (into screen)
+    //
+    // Position: scene.x = -sim.y, scene.y = sim.z, scene.z = -sim.x
+    simGroupRef.current.position.set(-y, z, -x);
 
-    // Rotation: ZYX Euler in radians
-    // roll → X axis, pitch → Z axis (forward tilt), yaw → Y axis
-    simGroupRef.current.rotation.set(roll, -yaw, pitch);
+    // ── Rotation mapping ──────────────────────────────────────────────────
+    // Use ZYX Euler order to match simulator's rotation convention.
+    // Sim: yaw (Z) → pitch (Y) → roll (X)
+    simGroupRef.current.rotation.order = 'ZYX';
+    simGroupRef.current.rotation.set(roll, pitch, yaw);
 
-    // ── Propeller animation ─────────────────────────────────────────────
+    // ── Propeller animation ──────────────────────────────────────────────
+    // Driven by real motor outputs; stops when simulation is not running.
     const thrusts = drone.motorThrusts;
     propRefs.current.forEach((prop, i) => {
       if (!prop) return;
       const dir = PROP_DIRECTIONS[i] ?? 1;
-      const speed = (thrusts[i] ?? 0) * 30;
+      const motorOutput = isRunning ? (thrusts[i] ?? 0) : 0;
+      const speed = motorOutput * 30;
       prop.rotation.y += dir * speed * delta;
     });
 

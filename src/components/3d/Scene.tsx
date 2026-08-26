@@ -125,7 +125,7 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
       enabled={cameraMode === 'orbit' || cameraMode === 'iso'}
       target={
         cameraMode === 'follow'
-          ? [drone.x, drone.z, -drone.y]
+          ? [-drone.y, drone.z, -drone.x]
           : undefined
       }
     />
@@ -150,7 +150,8 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
   const flightPathPoints = history.x.length > 2
     ? history.x.slice(-500).map((x, i) => {
         const idx = history.x.length - 500 + i;
-        return [x * VISUAL_SCALE, history.z[idx] * VISUAL_SCALE, -history.y[idx] * VISUAL_SCALE] as [number, number, number];
+        // Same mapping as DroneModel: scene.x = -sim.y, scene.y = sim.z, scene.z = -sim.x
+        return [-history.y[idx] * VISUAL_SCALE, history.z[idx] * VISUAL_SCALE, -x * VISUAL_SCALE] as [number, number, number];
       })
     : [];
 
@@ -165,9 +166,9 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
       {showTarget && (
         <TargetMarker
           position={[
-            target.x * VISUAL_SCALE,
-            target.z * VISUAL_SCALE,
             -target.y * VISUAL_SCALE,
+            target.z * VISUAL_SCALE,
+            -target.x * VISUAL_SCALE,
           ]}
         />
       )}
@@ -185,8 +186,8 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
               attach="attributes-position"
               count={2}
               array={new Float32Array([
-                drone.x * VISUAL_SCALE, drone.z * VISUAL_SCALE, -drone.y * VISUAL_SCALE,
-                target.x * VISUAL_SCALE, target.z * VISUAL_SCALE, -target.y * VISUAL_SCALE,
+                -drone.y * VISUAL_SCALE, drone.z * VISUAL_SCALE, -drone.x * VISUAL_SCALE,
+                -target.y * VISUAL_SCALE, target.z * VISUAL_SCALE, -target.x * VISUAL_SCALE,
               ])}
               itemSize={3}
             />
