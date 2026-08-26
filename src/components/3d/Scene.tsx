@@ -279,7 +279,12 @@ const Scene = forwardRef<SceneHandle>((_, ref) => {
           camera={{ position: [8, 6, 8], fov: 45 }}
           shadows
           style={{ background: bgColor, width: '100%', height: '100%' }}
-          gl={{ antialias: true, powerPreference: 'default' }}
+          gl={{
+            antialias: true,
+            powerPreference: 'default',
+            failIfMajorPerformanceCaveat: false,
+          }}
+          fallback={<WebGLFallback />}
           onCreated={({ gl }) => {
             gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             gl.shadowMap.enabled = true;

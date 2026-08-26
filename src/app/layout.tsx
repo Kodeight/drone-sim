@@ -6,6 +6,16 @@ export const metadata: Metadata = {
   description: 'Professional desktop flight dynamics simulator for 6-DOF multirotors.',
 };
 
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+].join('; ');
+
 export default function RootLayout({
   children,
 }: {
@@ -13,6 +23,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <meta httpEquiv="Content-Security-Policy" content={CSP} />
+      </head>
       <body>
         <div id="root" className="h-full">
           {children}
