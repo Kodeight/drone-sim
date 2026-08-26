@@ -122,6 +122,7 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
   const loadedRef     = useRef(false);
   const boxRef        = useRef<THREE.Box3>(new THREE.Box3());
   const clonedScene   = useRef<THREE.Object3D | null>(null);
+  const _decomposePos = useRef(new THREE.Vector3());
 
   const propGeometry = useMemo(() => createPropellerGeometry(), []);
 
@@ -155,8 +156,47 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
 
     const { x, y, z, roll, pitch, yaw } = drone;
 
+    // ── Attitude conversion: Python (Z-up) → Three.js (Y-up)
+    // Using R_three = S @ R_sim @ inverse(S) where:
+    // S = [[1, 0, 0], [0, 0, 1], [0, -1, 0]]
+    // Python: R_sim = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+    const cr = Math.cos(roll);
+    const sr = Math.sin(roll);
+    const cp = Math.cos(pitch);
+    const sp = Math.sin(pitch);
+    const cy = Math.cos(yaw);
+    const sy = Math.sin(yaw);
+
+    // R_sim = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+    const r11 = cy * cp;
+    const r12 = cy * sp * sr - sy * cr;
+    const r13 = cy * sp * cr + sy * sr;
+    const r21 = sy * cp;
+    const r22 = sy * sp * sr + cy * cr;
+    const r23 = sy * sp * cr - cy * sr;
+    const r31 = -sp;
+    const r32 = cp * sr;
+    const r33 = cp * cr;
+
+    // R_three = S @ R_sim @ S^{-1}
+    const elements = [
+      r11, r13, -r12, 0,
+      r31, r33, -r32, 0,
+      -r21, -r23, r22, 0,
+      0, 0, 0, 1,
+    ];
+
+    simGroupRef.current.matrix.fromArray(elements);
+    simGroupRef.current.matrix.decompose(
+      _decomposePos.current,
+      simGroupRef.current.quaternion,
+      simGroupRef.current.scale
+    );
+
+    // ── Position conversion: Python Z-up → Three.js Y-up
+    // X_three = X_sim, Y_three = Z_sim, Z_three = -Y_sim
+    // Set AFTER decompose since the rotation matrix has no translation
     simGroupRef.current.position.set(x, z, -y);
-    simGroupRef.current.rotation.set(roll, -yaw, pitch);
 
     // ── Propeller spin ──────────────────────────────────────────────────
     const thrusts = drone.motorThrusts;
@@ -165,6 +205,7 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
       const dir = PROP_DIRECTIONS[i] ?? 1;
       const motorOutput = isRunning ? (thrusts[i] ?? 0) : 0;
       const speed = motorOutput * 40;
+      // Rotate around the local shaft axis (group's local Y after rotation conversion)
       group.rotation.y += dir * speed * delta;
     });
 

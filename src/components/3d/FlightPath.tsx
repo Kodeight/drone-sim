@@ -9,7 +9,7 @@ interface FlightPathProps {
 }
 
 export default function FlightPath({ points, color = '#2f6fed' }: FlightPathProps) {
-  const lineGeometry = useMemo(() => {
+  const lineObj = useMemo(() => {
     if (points.length < 2) return null;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(points.length * 3);
@@ -19,14 +19,11 @@ export default function FlightPath({ points, color = '#2f6fed' }: FlightPathProp
       positions[i * 3 + 2] = z;
     });
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    return geometry;
-  }, [points]);
+    const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 });
+    return new THREE.Line(geometry, material);
+  }, [points, color]);
 
-  if (!lineGeometry) return null;
+  if (!lineObj) return null;
 
-  return (
-    <line geometry={lineGeometry}>
-      <lineBasicMaterial color={color} transparent opacity={0.6} />
-    </line>
-  );
+  return <primitive object={lineObj} />;
 }

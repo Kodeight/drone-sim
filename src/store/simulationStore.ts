@@ -16,6 +16,7 @@ import {
   ENVIRONMENT_PRESETS,
   MAX_HISTORY,
 } from '@/lib/simulation/types';
+import axios from 'axios';
 
 // ─── Extra types ────────────────────────────────────────────────────────────
 
@@ -169,7 +170,10 @@ function createEmptyHistory(): HistoryData {
   };
 }
 
-// ─── Singleton physics objects ────────────────────────────────────────────────
+// ─── Python backend URL ──────────────────────────────────────────────────────
+const BACKEND_URL = 'http://127.0.0.1:8765';
+
+// ─── Singleton physics objects (kept for reference, physics now from backend) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const drone = new Drone(DRONE_PRESETS.cinematic);
 
@@ -219,8 +223,8 @@ let logIdCounter = 0;
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
-  // ── Core state ──────────────────────────────────────────────────────────
-  drone: drone.state,
+  // ── Core state (fetched from Python backend) ────────────────────────────────
+  drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0] },
   target: { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
   pid: {
     X:     { kp: 0.8,  ki: 0.02, kd: 0.8  },
@@ -291,28 +295,52 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   // ── Simulation actions ───────────────────────────────────────────────────
 
-  startSimulation: () => {
+  startSimulation: async () => {
     get().addLog('SIMULATION', 'Simulation started');
     set({ isRunning: true });
+
+    try {
+      await axios.post(`${BACKEND_URL}/api/command`, { command: 'start' });
+    } catch (err) {
+      console.error('Failed to start backend', err);
+    }
   },
 
-  pauseSimulation: () => {
+  pauseSimulation: async () => {
     get().addLog('SIMULATION', 'Simulation paused');
     set({ isRunning: false, status: 'PAUSED' });
+
+    try {
+      await axios.post(`${BACKEND_URL}/api/command`, { command: 'stop' });
+    } catch (err) {
+      console.error('Failed to pause backend', err);
+    }
   },
 
-  toggleSimulation: () => {
+  toggleSimulation: async () => {
     const { isRunning } = get();
     if (isRunning) {
       get().addLog('SIMULATION', 'Simulation paused');
       set({ isRunning: false, status: 'PAUSED' });
+
+      try {
+        await axios.post(`${BACKEND_URL}/api/command`, { command: 'stop' });
+      } catch (err) {
+        console.error('Failed to pause backend', err);
+      }
     } else {
       get().addLog('SIMULATION', 'Simulation resumed');
       set({ isRunning: true });
+
+      try {
+        await axios.post(`${BACKEND_URL}/api/command`, { command: 'start' });
+      } catch (err) {
+        console.error('Failed to start backend', err);
+      }
     }
   },
 
-  resetSimulation: () => {
+  resetSimulation: async () => {
     drone.reset();
     Object.values(pidControllers).forEach((p) => p.reset());
     get().addLog('SIMULATION', 'Simulation reset');
@@ -320,19 +348,35 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       isRunning: false,
       time: 0,
       status: 'STOPPED',
-      drone: { ...drone.state },
+      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0] },
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
     });
+
+    try {
+      await axios.post(`${BACKEND_URL}/api/command`, { command: 'reset' });
+    } catch (err) {
+      console.error('Failed to reset backend', err);
+    }
   },
 
   setSpeed: (speed) => set({ speed }),
 
-  updateTarget: (axis, value) =>
-    set((s) => ({ target: { ...s.target, [axis]: value } })),
+  updateTarget: async (axis, value) => {
+    set((s) => ({ target: { ...s.target, [axis]: value } }));
 
-  updatePID: (axis, param, value) =>
+    // Send to Python backend (convert camelCase to snake_case)
+    try {
+      const backendKey = axis === 'autoHeading' ? 'auto_heading' : axis;
+      await axios.post(`${BACKEND_URL}/api/target`, { [backendKey]: value });
+    } catch (err) {
+      console.error(`Failed to update target ${axis}`, err);
+    }
+  },
+
+  updatePID: async (axis, param, value) => {
+    // Update local PID state in store
     set((s) => {
       const controller = pidControllers[axis as keyof typeof pidControllers];
       if (controller) {
@@ -344,104 +388,110 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           [axis]: { ...s.pid[axis as keyof PIDState], [param]: value },
         },
       };
-    }),
+    });
 
-  updateDisturbance: (axis, value) =>
-    set((s) => ({ disturbances: { ...s.disturbances, [axis]: value } })),
+    // Send updated gains to Python backend
+    try {
+      const axisKey = axis.toLowerCase();
+      const pidAxis = axis as keyof PIDState;
+      await axios.post(`${BACKEND_URL}/api/pid`, {
+        axis: axisKey,
+        params: {
+          kp: get().pid[pidAxis].kp,
+          ki: get().pid[pidAxis].ki,
+          kd: get().pid[pidAxis].kd,
+        },
+      });
+    } catch (err) {
+      console.error(`Failed to update PID ${axis} on backend`, err);
+    }
+  },
 
-  applyPreset: (preset) => {
+  updateDisturbance: async (axis, value) => {
+    set((s) => ({ disturbances: { ...s.disturbances, [axis]: value } }));
+
+    // Send disturbance to Python backend
+    try {
+      const disturbances = { ...get().disturbances, [axis]: value };
+      await axios.post(`${BACKEND_URL}/api/disturbance`, disturbances);
+    } catch (err) {
+      console.error(`Failed to update disturbance ${axis} on backend`, err);
+    }
+  },
+
+  applyPreset: async (preset) => {
+    // Apply PID gains to local controllers
     for (const [axis, params] of Object.entries(preset)) {
       const controller = pidControllers[axis as keyof typeof pidControllers];
       if (controller) {
         controller.setGains(params.kp, params.ki, params.kd);
       }
     }
-    set({ pid: preset as PIDState });
+
+    // Send PID gains to Python backend (one axis at a time)
+    try {
+      for (const [axis, params] of Object.entries(preset)) {
+        await axios.post(`${BACKEND_URL}/api/pid`, {
+          axis: axis.toLowerCase(),
+          params: { kp: params.kp, ki: params.ki, kd: params.kd },
+        });
+      }
+    } catch (err) {
+      console.error('Failed to apply preset on backend', err);
+    }
+
+    set({ pid: preset as unknown as PIDState });
     get().addLog('CONTROL', `PID preset applied`);
   },
 
   step: (dt: number) => {
-    const { target, disturbances, history, time } = get();
-    const d = drone.state;
+    // Fetch state from Python backend (fire-and-forget)
+    axios.get(`${BACKEND_URL}/api/state`).then((response) => {
+      const state = response.data;
 
-    // ── Position control (world-frame acceleration commands) ──────────────
-    const axWorld = pidControllers.X.update(target.x, d.x, dt);
-    const ayWorld = pidControllers.Y.update(target.y, d.y, dt);
+      // Update drone state from backend
+      set({
+        drone: {
+          x: state.x,
+          y: state.y,
+          z: state.z,
+          vx: state.vx,
+          vy: state.vy,
+          vz: state.vz,
+          roll: state.roll,
+          pitch: state.pitch,
+          yaw: state.yaw,
+          p: state.p,
+          q: state.q,
+          r: state.r,
+          motorThrusts: state.motor1 !== undefined ? [state.motor1, state.motor2, state.motor3, state.motor4] : [0, 0, 0, 0],
+        },
+        time: state.time,
+        distanceToTarget: state.distanceToTarget,
+        status: state.status,
+      });
 
-    // Transform to body frame
-    const cosYaw = Math.cos(d.yaw);
-    const sinYaw = Math.sin(d.yaw);
-    const axBody =  cosYaw * axWorld + sinYaw * ayWorld;
-    const ayBody = -sinYaw * axWorld + cosYaw * ayWorld;
+      // Record history
+      const newHistory = { ...get().history };
+      recordHistory(newHistory, state.time, {
+        x: state.x, y: state.y, z: state.z,
+        vx: state.vx, vy: state.vy, vz: state.vz,
+        roll: state.roll, pitch: state.pitch, yaw: state.yaw,
+        p: state.p, q: state.q, r: state.r,
+        motorThrusts: state.motor1 !== undefined ? [state.motor1, state.motor2, state.motor3, state.motor4] : [0, 0, 0, 0],
+      }, get().target);
+      set({ history: newHistory });
 
-    // ── Position → attitude setpoints ─────────────────────────────────────
-    const maxTilt = rad(drone.controlLimits.maxTiltAngle);
-
-    const desiredPitchPos = Math.max(-maxTilt, Math.min(maxTilt,  axBody / drone.g));
-    const desiredRollPos  = Math.max(-maxTilt, Math.min(maxTilt, -ayBody / drone.g));
-
-    const desiredRoll  = Math.max(-maxTilt, Math.min(maxTilt, rad(target.roll)  + desiredRollPos));
-    const desiredPitch = Math.max(-maxTilt, Math.min(maxTilt, rad(target.pitch) + desiredPitchPos));
-
-    // ── Attitude control with rate damping ────────────────────────────────
-    const rollTorque  = pidControllers.Roll.update(desiredRoll, d.roll, dt)  - RATE_DAMPING.roll  * d.p;
-    const pitchTorque = pidControllers.Pitch.update(desiredPitch, d.pitch, dt) - RATE_DAMPING.pitch * d.q;
-
-    // ── Auto heading ──────────────────────────────────────────────────────
-    let yawTargetDeg = target.yaw;
-    if (target.autoHeading) {
-      const hSpeed = hypot(d.vx, d.vy);
-      if (hSpeed > 0.05) {
-        yawTargetDeg = deg(Math.atan2(d.vy, d.vx));
-      } else {
-        const dx = target.x - d.x;
-        const dy = target.y - d.y;
-        if (hypot(dx, dy) > 0.05) {
-          yawTargetDeg = deg(Math.atan2(dy, dx));
-        }
-      }
-    }
-
-    const yawTorque = pidControllers.Yaw.update(rad(yawTargetDeg), d.yaw, dt) - RATE_DAMPING.yaw * d.r;
-
-    // ── Altitude ──────────────────────────────────────────────────────────
-    const altitudeCommand = pidControllers.Z.update(target.z, d.z, dt);
-    let thrust = Math.max(0, drone.mass * drone.g + altitudeCommand);
-
-    // Thrust limit
-    const maxThrust = 4 * drone.maxMotorThrust;
-    thrust = Math.min(thrust, maxThrust);
-
-    // ── Step drone physics ────────────────────────────────────────────────
-    drone.update(
-      thrust, rollTorque, pitchTorque, yawTorque,
-      disturbances.forceX, disturbances.forceY, disturbances.forceZ,
-      disturbances.torqueRoll, disturbances.torquePitch, disturbances.torqueYaw,
-      dt
-    );
-
-    const newTime = time + dt;
-    const dist = hypot(target.x - d.x, target.y - d.y, target.z - d.z);
-
-    const newHistory = { ...history };
-    recordHistory(newHistory, newTime, drone.state, target);
-
-    let status: SimulationStatus = 'TRACKING';
-    if (dist < 0.15) status = 'ON_TARGET';
-
-    set({
-      drone: { ...drone.state },
-      time: newTime,
-      distanceToTarget: dist,
-      history: newHistory,
-      status,
-      controllerOutputs: {
-        roll:     rollTorque,
-        pitch:    pitchTorque,
-        yaw:      yawTorque,
-        throttle: thrust / (drone.mass * drone.g),
-      },
-    });
+      // Update controller outputs from backend data
+      set({
+        controllerOutputs: {
+          roll: state.roll,
+          pitch: state.pitch,
+          yaw: state.yaw,
+          throttle: state.thrust / 4.0,
+        },
+      });
+    }).catch(() => {});
   },
 
   exportCSV: () => {
@@ -487,7 +537,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set((s) => ({ simParams: { ...s.simParams, [key]: value } })),
 
   // ── Drone config ──────────────────────────────────────────────────────────
-  selectDrone: (droneId) => {
+  selectDrone: async (droneId) => {
     const config = DRONE_PRESETS[droneId];
     if (!config) return;
 
@@ -520,6 +570,18 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       Pitch: { kp: config.pidGains.pitch?.[0] ?? 4.0, ki: config.pidGains.pitch?.[1] ?? 0.08, kd: config.pidGains.pitch?.[2] ?? 0.5 },
       Yaw:   { kp: config.pidGains.yaw?.[0] ?? 2.5,  ki: config.pidGains.yaw?.[1] ?? 0.03, kd: config.pidGains.yaw?.[2] ?? 0.4 },
     };
+
+    // Send PID gains to Python backend (one axis at a time)
+    try {
+      for (const [axis, gains] of Object.entries(config.pidGains)) {
+        await axios.post(`${BACKEND_URL}/api/pid`, {
+          axis: axis.toLowerCase(),
+          params: { kp: gains[0], ki: gains[1], kd: gains[2] },
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send PID gains on drone change to backend', err);
+    }
 
     get().addLog('CONTROL', `Drone changed to ${config.name}`);
     set({
@@ -565,7 +627,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     });
   },
 
-  applyCustomDrone: () => {
+  applyCustomDrone: async () => {
     const config = get().customDrone;
     const wasRunning = get().isRunning;
     if (wasRunning) {
@@ -573,21 +635,48 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     }
     drone.applyConfig(config);
     drone.reset();
-    Object.values(pidControllers).forEach((p) => p.reset());
-    const gainsMap: Record<string, keyof typeof pidControllers> = {
+
+    // Send PID gains to Python backend (one axis at a time)
+    const gainsMap: Record<string, string> = {
       x: 'X', y: 'Y', z: 'Z', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw',
     };
+    try {
+      for (const [axis, gains] of Object.entries(config.pidGains)) {
+        const key = gainsMap[axis];
+        if (key) {
+          await axios.post(`${BACKEND_URL}/api/pid`, {
+            axis: axis.toLowerCase(),
+            params: { kp: gains[0], ki: gains[1], kd: gains[2] },
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to apply custom drone on backend', err);
+    }
+
+    // Update local PID controllers (for reference/UI)
     for (const [axis, gains] of Object.entries(config.pidGains)) {
-      const key = gainsMap[axis];
+      const key = gainsMap[axis] as keyof typeof pidControllers;
       if (key && pidControllers[key]) {
         pidControllers[key].setGains(gains[0], gains[1], gains[2]);
       }
     }
+
+    const pidState: PIDState = {
+      X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
+      Y:     { kp: config.pidGains.y?.[0] ?? 0.8,  ki: config.pidGains.y?.[1] ?? 0.02, kd: config.pidGains.y?.[2] ?? 0.8 },
+      Z:     { kp: config.pidGains.z?.[0] ?? 4.0,  ki: config.pidGains.z?.[1] ?? 1.0,  kd: config.pidGains.z?.[2] ?? 2.5 },
+      Roll:  { kp: config.pidGains.roll?.[0] ?? 4.0,  ki: config.pidGains.roll?.[1] ?? 0.08, kd: config.pidGains.roll?.[2] ?? 0.5 },
+      Pitch: { kp: config.pidGains.pitch?.[0] ?? 4.0, ki: config.pidGains.pitch?.[1] ?? 0.08, kd: config.pidGains.pitch?.[2] ?? 0.5 },
+      Yaw:   { kp: config.pidGains.yaw?.[0] ?? 2.5,  ki: config.pidGains.yaw?.[1] ?? 0.03, kd: config.pidGains.yaw?.[2] ?? 0.4 },
+    };
+
     get().addLog('CONTROL', `Custom drone applied`);
     set({
       currentDroneId: 'custom',
       droneConfig: config,
       drone: { ...drone.state },
+      pid: pidState,
       time: 0,
       status: 'STOPPED',
       history: createEmptyHistory(),
@@ -605,6 +694,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         windDirection: 0,
       },
     });
+
     if (wasRunning) {
       set({ isRunning: true });
       get().addLog('SIMULATION', 'Simulation resumed');
@@ -658,7 +748,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   loadPreset: (id) => {
     const preset = get().presets.find((p) => p.id === id);
     if (!preset) return;
-    get().applyPreset(preset.pid as Record<string, PIDParams>);
+    get().applyPreset(preset.pid as unknown as Record<string, PIDParams>);
     set((s) => ({
       target: { ...s.target, ...preset.target },
     }));

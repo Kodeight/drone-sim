@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Suspense, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, forwardRef, useImperativeHandle } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -70,8 +70,6 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
     if (!modelBox || !fittedRef.current) return;
     const center = new THREE.Vector3();
     modelBox.getCenter(center);
-    // Raise target above ground so vertical movement is visible
-    center.y = Math.max(center.y, 1.5);
     const sphere = new THREE.Sphere();
     modelBox.getBoundingSphere(sphere);
     const r = sphere.radius * 2.5;
@@ -106,6 +104,9 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
         break;
       case 'iso':
         fitCameraToBox(cam, controlsRef.current, modelBox);
+        // Lower the camera slightly to bring ground closer
+        cam.position.y -= 1.0;
+        if (controlsRef.current) controlsRef.current.target.y -= 1.0;
         break;
       case 'orbit':
       case 'follow':
@@ -124,7 +125,7 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
       dampingFactor={0.06}
       minDistance={0.5}
       maxDistance={80}
-      enabled={cameraMode === 'orbit' || cameraMode === 'iso'}
+      enabled={true}
       target={
         cameraMode === 'follow'
           ? [drone.x, drone.z, -drone.y]
@@ -132,6 +133,25 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
       }
     />
   );
+}
+
+// ─── Drone → target dashed line helper ───────────────────────────────────────
+
+function DroneTargetLine({ drone, target }: { drone: { x: number; y: number; z: number }; target: { x: number; y: number; z: number } }) {
+  const lineObj = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array([
+      drone.x * VISUAL_SCALE, drone.z * VISUAL_SCALE, -drone.y * VISUAL_SCALE,
+      target.x * VISUAL_SCALE, target.z * VISUAL_SCALE, -target.y * VISUAL_SCALE,
+    ]);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.LineDashedMaterial({ color: '#22c55e', dashSize: 0.3, gapSize: 0.15, transparent: true, opacity: 0.5 });
+    const line = new THREE.Line(geometry, material);
+    line.computeLineDistances();
+    return line;
+  }, [drone.x, drone.y, drone.z, target.x, target.y, target.z]);
+
+  return <primitive object={lineObj} />;
 }
 
 // ─── Scene content ────────────────────────────────────────────────────────────
@@ -181,20 +201,7 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
 
       {/* ── Drone → target dashed line ──────────────────────────────── */}
       {showTarget && history.x.length > 0 && (
-        <line>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={2}
-              array={new Float32Array([
-                drone.x * VISUAL_SCALE, drone.z * VISUAL_SCALE, -drone.y * VISUAL_SCALE,
-                target.x * VISUAL_SCALE, target.z * VISUAL_SCALE, -target.y * VISUAL_SCALE,
-              ])}
-              itemSize={3}
-            />
-          </bufferGeometry>
-          <lineDashedMaterial color="#22c55e" dashSize={0.3} gapSize={0.15} transparent opacity={0.5} />
-        </line>
+        <DroneTargetLine drone={drone} target={target} />
       )}
 
       {/* ── Camera controller ───────────────────────────────────────── */}
