@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -8,15 +8,7 @@ import { useSimulationStore } from '@/store/simulationStore';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-/**
- * Visual scale that maps simulator physics units (meters) to scene units.
- * The GLB is ~2.70 x 0.58 x 3.23 units in its own local space.
- * The simulator operates in meters.  We want the model to look physically
- * correct relative to the grid (1 grid cell = 1 scene unit).
- */
 export const MODEL_VISUAL_SCALE = 1.0;
-
-/** FOV margin multiplier (> 1.0 adds breathing room around the model) */
 const FIT_MARGIN = 1.55;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -25,46 +17,47 @@ interface DroneModelGLBProps {
   onLoaded?: (box: THREE.Box3) => void;
 }
 
-// ─── Propeller detection ─────────────────────────────────────────────────────
+// ─── Propeller geometry (shared) ────────────────────────────────────────────
 
-const PROP_KEYWORDS = ['prop', 'rotor', 'blade', 'motor', 'fan', 'spinner'];
+function createPropellerGeometry(): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  // 3-blade propeller
+  const blades = 3;
+  const innerR = 0.02;
+  const outerR = 0.18;
+  const bladeWidth = 0.04;
 
-function findPropellers(scene: THREE.Object3D): THREE.Object3D[] {
-  const found: THREE.Object3D[] = [];
+  for (let i = 0; i < blades; i++) {
+    const angle = (i / blades) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const cosW = Math.cos(angle + 0.15);
+    const sinW = Math.sin(angle + 0.15);
 
-  scene.traverse((obj) => {
-    const name = obj.name.toLowerCase();
-    const isProp = PROP_KEYWORDS.some((k) => name.includes(k));
-    if (isProp) {
-      found.push(obj);
-    }
-  });
-
-  // Deduplicate: keep only leaf-most nodes (children of groups)
-  // If none found by name, attempt heuristic: 4 similarly-named meshes
-  if (found.length === 0) {
-    const meshes: THREE.Mesh[] = [];
-    scene.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) meshes.push(obj as THREE.Mesh);
-    });
-    // Log all mesh names for debugging
-    if (typeof window !== 'undefined') {
-      console.log('[DroneModel] GLB mesh names:', meshes.map((m) => m.name));
-    }
-  } else {
-    if (typeof window !== 'undefined') {
-      console.log('[DroneModel] Found propeller nodes:', found.map((o) => o.name));
-    }
+    shape.moveTo(cos * innerR, sin * innerR);
+    shape.lineTo(cosW * outerR - sinW * bladeWidth, sinW * outerR + cosW * bladeWidth);
+    shape.lineTo(cosW * outerR + sinW * bladeWidth, sinW * outerR - cosW * bladeWidth);
+    shape.lineTo(cos * innerR, sin * innerR);
   }
 
-  return found.slice(0, 4);
+  const geometry = new THREE.ShapeGeometry(shape, 1);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
 }
 
+// ─── Motor positions (relative to drone center, in GLB local space) ────────
+// X-config: front-left, front-right, rear-left, rear-right
+const MOTOR_OFFSETS: [number, number, number][] = [
+  [ 0.18, 0.06, -0.18],  // M1 front-left
+  [ 0.18, 0.06,  0.18],  // M2 front-right
+  [-0.18, 0.06, -0.18],  // M3 rear-left
+  [-0.18, 0.06,  0.18],  // M4 rear-right
+];
+
 /**
- * X-config quadrotor propeller rotation directions.
- * M1 (Front Left):  CW   M2 (Front Right): CCW
- * M3 (Rear Left):   CCW  M4 (Rear Right):  CW
- * CW = +Y rotation, CCW = -Y rotation (when viewed from above)
+ * X-config quadrotor rotation directions.
+ * M1 Front-Left: CW  M2 Front-Right: CCW
+ * M3 Rear-Left:  CCW M4 Rear-Right:  CW
  */
 const PROP_DIRECTIONS = [1, -1, -1, 1];
 
@@ -78,19 +71,17 @@ export function fitCameraToBox(
 ) {
   const center = new THREE.Vector3();
   box.getCenter(center);
+  center.y = Math.max(center.y, 1.5);
 
   const sphere = new THREE.Sphere();
   box.getBoundingSphere(sphere);
   const radius = sphere.radius;
 
   const fovRad = (camera.fov * Math.PI) / 180;
-  // Account for aspect: use the smaller angular extent
   const aspect = camera.aspect;
   const effectiveFov = aspect < 1 ? fovRad * aspect : fovRad;
-
   const distance = (radius * margin) / Math.sin(effectiveFov / 2);
 
-  // Position camera at elevated isometric angle for clear vertical visibility
   const dir = new THREE.Vector3(1.0, 1.0, 1.0).normalize();
   camera.position.copy(center).addScaledVector(dir, distance);
   camera.near = distance * 0.01;
@@ -104,54 +95,52 @@ export function fitCameraToBox(
   }
 }
 
+// ─── Single propeller mesh ───────────────────────────────────────────────────
+
+function PropellerBlade({ geometry }: { geometry: THREE.BufferGeometry }) {
+  return (
+    <mesh geometry={geometry}>
+      <meshStandardMaterial color="#1a1a2e" side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────
 
 export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
   const { scene: gltfScene } = useGLTF('models/drone.glb');
 
-  const drone       = useSimulationStore((s) => s.drone);
-  const cameraMode  = useSimulationStore((s) => s.cameraMode);
-  const isRunning   = useSimulationStore((s) => s.isRunning);
+  const drone      = useSimulationStore((s) => s.drone);
+  const cameraMode = useSimulationStore((s) => s.cameraMode);
+  const isRunning  = useSimulationStore((s) => s.isRunning);
 
   const { camera } = useThree();
 
-  // Refs
-  const calibGroupRef  = useRef<THREE.Group>(null);   // model centering
-  const simGroupRef    = useRef<THREE.Group>(null);    // simulation transforms
-  const propRefs       = useRef<THREE.Object3D[]>([]);
-  const loadedRef      = useRef(false);
-  const boxRef         = useRef<THREE.Box3>(new THREE.Box3());
+  const calibGroupRef = useRef<THREE.Group>(null);
+  const simGroupRef   = useRef<THREE.Group>(null);
+  const propGroupRefs = useRef<THREE.Group[]>([]);
+  const loadedRef     = useRef(false);
+  const boxRef        = useRef<THREE.Box3>(new THREE.Box3());
+  const clonedScene   = useRef<THREE.Object3D | null>(null);
 
-  // Clone the scene once to avoid mutations on the shared asset
-  const clonedScene = useRef<THREE.Object3D | null>(null);
+  const propGeometry = useMemo(() => createPropellerGeometry(), []);
 
   useEffect(() => {
     if (!gltfScene || loadedRef.current) return;
     loadedRef.current = true;
 
-    // Deep clone so multiple instances don't share state
     const clone = gltfScene.clone(true);
     clonedScene.current = clone;
 
-    // ── 1. Measure bounding box of the raw GLB ──────────────────────────
     const rawBox = new THREE.Box3().setFromObject(clone);
     const center = new THREE.Vector3();
     rawBox.getCenter(center);
 
-    // ── 2. Center calibration group ─────────────────────────────────────
     if (calibGroupRef.current) {
       calibGroupRef.current.position.set(-center.x, -center.y, -center.z);
-    }
-
-    // ── 3. Add clone to calib group ──────────────────────────────────────
-    if (calibGroupRef.current) {
       calibGroupRef.current.add(clone);
     }
 
-    // ── 4. Find propellers ────────────────────────────────────────────────
-    propRefs.current = findPropellers(clone);
-
-    // ── 5. Compute world bounding box of the centered model ──────────────
     if (simGroupRef.current) {
       simGroupRef.current.updateWorldMatrix(true, true);
       const worldBox = new THREE.Box3().setFromObject(simGroupRef.current);
@@ -160,37 +149,26 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
     }
   }, [gltfScene, onLoaded]);
 
-  // ── Simulation transform: position + attitude ────────────────────────────
+  // ── Animation loop ──────────────────────────────────────────────────────
   useFrame((_, delta) => {
     if (!simGroupRef.current) return;
 
     const { x, y, z, roll, pitch, yaw } = drone;
 
-    // ── Coordinate mapping (sim → Three.js) ──────────────────────────────
-    // Simulator: x=forward, y=left, z=up
-    // Three.js:  x=right,   y=up,   z=back (into screen)
-    //
-    // Position: scene.x = -sim.y, scene.y = sim.z, scene.z = -sim.x
-    simGroupRef.current.position.set(-y, z, -x);
+    simGroupRef.current.position.set(x, z, -y);
+    simGroupRef.current.rotation.set(roll, -yaw, pitch);
 
-    // ── Rotation mapping ──────────────────────────────────────────────────
-    // Use ZYX Euler order to match simulator's rotation convention.
-    // Sim: yaw (Z) → pitch (Y) → roll (X)
-    simGroupRef.current.rotation.order = 'ZYX';
-    simGroupRef.current.rotation.set(roll, pitch, yaw);
-
-    // ── Propeller animation ──────────────────────────────────────────────
-    // Driven by real motor outputs; stops when simulation is not running.
+    // ── Propeller spin ──────────────────────────────────────────────────
     const thrusts = drone.motorThrusts;
-    propRefs.current.forEach((prop, i) => {
-      if (!prop) return;
+    propGroupRefs.current.forEach((group, i) => {
+      if (!group) return;
       const dir = PROP_DIRECTIONS[i] ?? 1;
       const motorOutput = isRunning ? (thrusts[i] ?? 0) : 0;
-      const speed = motorOutput * 30;
-      prop.rotation.y += dir * speed * delta;
+      const speed = motorOutput * 40;
+      group.rotation.y += dir * speed * delta;
     });
 
-    // ── Follow camera mode ──────────────────────────────────────────────
+    // ── Follow camera ──────────────────────────────────────────────────
     if (cameraMode === 'follow') {
       const cam = camera as THREE.PerspectiveCamera;
       const pos = simGroupRef.current.position;
@@ -201,11 +179,20 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
 
   return (
     <group ref={simGroupRef} scale={[MODEL_VISUAL_SCALE, MODEL_VISUAL_SCALE, MODEL_VISUAL_SCALE]}>
-      {/* Calibration group: offsets the GLB origin to its center */}
       <group ref={calibGroupRef} />
+
+      {/* ── Procedural propellers ─────────────────────────────────────── */}
+      {MOTOR_OFFSETS.map((offset, i) => (
+        <group
+          key={i}
+          ref={(el) => { if (el) propGroupRefs.current[i] = el; }}
+          position={offset}
+        >
+          <PropellerBlade geometry={propGeometry} />
+        </group>
+      ))}
     </group>
   );
 }
 
-// Preload for faster first render
 useGLTF.preload('models/drone.glb');

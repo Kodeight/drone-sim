@@ -24,7 +24,7 @@ function MotorGauge({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
       {/* Position label */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.05em' }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>
         {label}
       </div>
 
@@ -104,7 +104,7 @@ export default function MotorThrustVisual() {
           Motor Thrust (N)
         </span>
         <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-secondary)' }}>
-          Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{totalThrust.toFixed(2)} N</span>
+          Total: <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{totalThrust.toFixed(2)} N</span>
         </span>
       </div>
 

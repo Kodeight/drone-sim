@@ -130,9 +130,9 @@ export default function FlightStatus() {
       <Section title="Attitude">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ flex: 1 }}>
-            <DataRow label="Roll"  value={rollDeg.toFixed(1)}  unit="°" color={Math.abs(rollDeg)  > 15 ? 'var(--warning)' : 'var(--accent)'} />
-            <DataRow label="Pitch" value={pitchDeg.toFixed(1)} unit="°" color={Math.abs(pitchDeg) > 15 ? 'var(--warning)' : 'var(--accent)'} />
-            <DataRow label="Yaw"   value={yawDeg.toFixed(1)}   unit="°" color="var(--accent)" />
+            <DataRow label="Roll"  value={rollDeg.toFixed(1)}  unit="°" color={Math.abs(rollDeg)  > 15 ? 'var(--warning)' : 'var(--text-primary)'} />
+            <DataRow label="Pitch" value={pitchDeg.toFixed(1)} unit="°" color={Math.abs(pitchDeg) > 15 ? 'var(--warning)' : 'var(--text-primary)'} />
+            <DataRow label="Yaw"   value={yawDeg.toFixed(1)}   unit="°" color="var(--text-primary)" />
           </div>
           <CompassRose yawDeg={yawDeg} />
         </div>
@@ -141,11 +141,11 @@ export default function FlightStatus() {
       {/* ── Rates ────────────────────────────────────────────────── */}
       <Section title="Rates (°/s)">
         <DataRow label="Roll Rate"  value={(toDeg(drone.p)).toFixed(1)} unit="°/s"
-          color={Math.abs(drone.p) > 1 ? 'var(--success)' : 'var(--accent)'} />
+          color={Math.abs(drone.p) > 1 ? 'var(--success)' : 'var(--text-primary)'} />
         <DataRow label="Pitch Rate" value={(toDeg(drone.q)).toFixed(1)} unit="°/s"
-          color={Math.abs(drone.q) > 1 ? 'var(--danger)' : 'var(--accent)'} />
+          color={Math.abs(drone.q) > 1 ? 'var(--danger)' : 'var(--text-primary)'} />
         <DataRow label="Yaw Rate"   value={(toDeg(drone.r)).toFixed(1)} unit="°/s"
-          color="var(--accent)" />
+          color="var(--text-primary)" />
       </Section>
 
       {/* ── Position ─────────────────────────────────────────────── */}

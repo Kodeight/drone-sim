@@ -89,17 +89,8 @@ export default function Header() {
         id="header-theme-toggle"
         onClick={toggleTheme}
         title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-        style={{
-          width: 30, height: 30,
-          borderRadius: 6,
-          border: '1px solid var(--border)',
-          background: 'var(--bg-secondary)',
-          color: 'var(--text-secondary)',
-          cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'background 0.15s, border-color 0.15s',
-        }}
+        className="btn btn-ghost btn-sm"
+        style={{ width: 30, height: 30, padding: 0, flexShrink: 0 }}
       >
         {theme === 'dark' ? (
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

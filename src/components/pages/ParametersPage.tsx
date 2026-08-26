@@ -31,7 +31,7 @@ export default function ParametersPage() {
           <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: 3 }}>
             Active Drone
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
             {droneConfig.name}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.6 }}>

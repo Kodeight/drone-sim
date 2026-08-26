@@ -126,14 +126,10 @@ export default function Sidebar() {
           id="sidebar-collapse-btn"
           onClick={toggleSidebar}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="btn btn-ghost btn-sm"
           style={{
             width: 28, height: 28,
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
             flexShrink: 0,
           }}
         >
@@ -156,8 +152,6 @@ export default function Sidebar() {
                 width: '100%',
                 justifyContent: collapsed ? 'center' : 'flex-start',
                 marginBottom: 2,
-                border: isActive ? '1px solid rgba(6,182,212,0.2)' : '1px solid transparent',
-                background: isActive ? 'var(--accent-glow)' : 'transparent',
               }}
             >
               <span style={{ flexShrink: 0 }}>{item.icon}</span>

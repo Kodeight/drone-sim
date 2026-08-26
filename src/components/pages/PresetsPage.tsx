@@ -53,12 +53,8 @@ export default function PresetsPage() {
           <button
             onClick={handleSave}
             disabled={!newName.trim()}
-            style={{
-              padding: '6px 16px', fontSize: 12, fontWeight: 600,
-              background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.4)',
-              borderRadius: 5, color: 'var(--accent)', cursor: 'pointer',
-              opacity: newName.trim() ? 1 : 0.4,
-            }}
+            className="btn btn-primary btn-sm"
+            style={{ opacity: newName.trim() ? 1 : 0.4 }}
           >
             Save
           </button>
@@ -81,11 +77,8 @@ export default function PresetsPage() {
               </div>
               <button
                 onClick={() => applyPreset(preset as any)}
-                style={{
-                  padding: '4px 12px', fontSize: 11, fontWeight: 500,
-                  background: 'var(--accent-glow)', border: '1px solid var(--accent)',
-                  borderRadius: 5, color: 'var(--accent)', cursor: 'pointer',
-                }}
+                className="btn btn-primary btn-sm"
+                style={{ padding: '4px 12px', fontSize: 11 }}
               >
                 Apply
               </button>
@@ -118,21 +111,15 @@ export default function PresetsPage() {
                 </div>
                 <button
                   onClick={() => loadPreset(preset.id)}
-                  style={{
-                    padding: '4px 10px', fontSize: 11, fontWeight: 500,
-                    background: 'var(--accent-glow)', border: '1px solid var(--accent)',
-                    borderRadius: 5, color: 'var(--accent)', cursor: 'pointer',
-                  }}
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '4px 10px', fontSize: 11 }}
                 >
                   Load
                 </button>
                 <button
                   onClick={() => deletePreset(preset.id)}
-                  style={{
-                    padding: '4px 10px', fontSize: 11, fontWeight: 500,
-                    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
-                    borderRadius: 5, color: 'var(--danger)', cursor: 'pointer',
-                  }}
+                  className="btn btn-danger btn-sm"
+                  style={{ padding: '4px 10px', fontSize: 11 }}
                 >
                   Delete
                 </button>
