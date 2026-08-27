@@ -74,6 +74,7 @@ interface SimulationStore {
   distanceToTarget: number;
   history: HistoryData;
   controllerOutputs: { roll: number; pitch: number; yaw: number; throttle: number };
+  resetGeneration: number;
 
   // UI state
   theme: Theme;
@@ -176,6 +177,9 @@ const BACKEND_URL = 'http://127.0.0.1:8765';
 // Request sequencing to prevent out-of-order responses
 let requestGeneration = 0;
 
+// Reset generation counter - increments on each reset to invalidate interpolation state
+let resetGeneration = 0;
+
 // ─── Singleton physics objects (kept for reference, physics now from backend) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const drone = new Drone(DRONE_PRESETS.cinematic);
@@ -245,6 +249,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   distanceToTarget: 0,
   history: createEmptyHistory(),
   controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+  resetGeneration: 0,
 
   // ── UI state ─────────────────────────────────────────────────────────────
   theme: 'dark',
@@ -378,6 +383,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      resetGeneration: get().resetGeneration + 1,
     });
   },
 
@@ -467,12 +473,16 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   step: (dt: number) => {
     // Request sequencing: increment generation and capture it
     const currentGeneration = ++requestGeneration;
+    const currentResetGeneration = get().resetGeneration;
 
     // Fetch state from Python backend (fire-and-forget with sequencing)
     axios.get(`${BACKEND_URL}/api/state`).then((response) => {
-      // Discard stale responses
+      // Discard stale responses (both from older requests AND from before a reset)
       if (currentGeneration !== requestGeneration) {
         return;
+      }
+      if (currentResetGeneration !== get().resetGeneration) {
+        return; // Reset occurred, discard this response
       }
 
       const state = response.data;

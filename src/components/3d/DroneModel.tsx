@@ -138,6 +138,8 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
     position: THREE.Vector3;
   } | null>(null);
   const interpFactorRef = useRef(0);
+  const lastStateKeyRef = useRef('');
+  const stateKeyRef = useRef('');
 
   const propGeometry = useMemo(() => createPropellerGeometry(), []);
 
@@ -207,18 +209,25 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
     const newPosition = new THREE.Vector3(x, z, -y);
 
     // Update authoritative state refs when new backend data arrives
-    // Store previous state for interpolation
-    if (currentStateRef.current) {
-      prevStateRef.current = {
-        x: currentStateRef.current.x,
-        y: currentStateRef.current.y,
-        z: currentStateRef.current.z,
-        roll: currentStateRef.current.roll,
-        pitch: currentStateRef.current.pitch,
-        yaw: currentStateRef.current.yaw,
-        quaternion: currentStateRef.current.quaternion.clone(),
-        position: currentStateRef.current.position.clone(),
-      };
+    // Only update previous state when we have a genuine new state
+    const stateKey = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)},${roll.toFixed(6)},${pitch.toFixed(6)},${yaw.toFixed(6)}`;
+    const isNewState = stateKey !== stateKeyRef.current;
+
+    if (isNewState) {
+      // New authoritative state arrived - shift current to previous
+      if (currentStateRef.current) {
+        prevStateRef.current = {
+          x: currentStateRef.current.x,
+          y: currentStateRef.current.y,
+          z: currentStateRef.current.z,
+          roll: currentStateRef.current.roll,
+          pitch: currentStateRef.current.pitch,
+          yaw: currentStateRef.current.yaw,
+          quaternion: currentStateRef.current.quaternion.clone(),
+          position: currentStateRef.current.position.clone(),
+        };
+      }
+      stateKeyRef.current = stateKey;
     }
 
     currentStateRef.current = {
@@ -227,8 +236,10 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
       position: newPosition,
     };
 
-    // Reset interpolation factor when new state arrives
-    interpFactorRef.current = 0;
+    // Reset interpolation factor only when a NEW state arrives
+    if (isNewState) {
+      interpFactorRef.current = 0;
+    }
 
     // ── Interpolation for smooth visualization ───────────────────────────
     // Physics updates at ~100Hz (0.01s), render at 60Hz (0.016s)
