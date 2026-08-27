@@ -113,6 +113,16 @@ function stopPythonBackend() {
 app.whenReady().then(function () {
   startPythonBackend();
 
+  // Test backend connectivity after a delay
+  setTimeout(function () {
+    const http = require('http');
+    http.get('http://127.0.0.1:8765/health', function (res) {
+      console.log('[Main] Health check status:', res.statusCode);
+    }).on('error', function (e) {
+      console.error('[Main] Health check failed:', e.message);
+    });
+  }, 3000);
+
   var CSP = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
