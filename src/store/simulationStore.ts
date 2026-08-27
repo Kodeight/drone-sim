@@ -308,9 +308,12 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set({ isRunning: true });
 
     try {
-      await axios.post(`${BACKEND_URL}/api/command`, { command: 'start' });
-    } catch (err) {
-      console.error('Failed to start backend', err);
+      const resp = await axios.post(`${BACKEND_URL}/api/command`, { command: 'start' }, { timeout: 2000 });
+      console.log('[startSimulation] Backend response:', resp.data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[startSimulation] Failed to start backend:', msg);
+      get().addLog('ERROR', `Start failed: ${msg}`);
     }
   },
 
@@ -476,7 +479,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const currentResetGeneration = get().resetGeneration;
 
     // Fetch state from Python backend (fire-and-forget with sequencing)
-    axios.get(`${BACKEND_URL}/api/state`).then((response) => {
+    axios.get(`${BACKEND_URL}/api/state`, { timeout: 1000 }).then((response) => {
       // Discard stale responses (both from older requests AND from before a reset)
       if (currentGeneration !== requestGeneration) {
         return;
@@ -486,6 +489,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       }
 
       const state = response.data;
+
+      console.log('[step] Received state:', { time: state.time, status: state.status, x: state.x, z: state.z });
 
       // Update drone state from backend (including controller outputs)
       set({
@@ -537,7 +542,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           throttle: state.throttle ?? (state.thrust / (4 * 4.5)), // fallback
         },
       });
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[step] Failed to fetch state:', msg);
+      get().addLog('ERROR', `State fetch failed: ${msg}`);
+    });
   },
 
   exportCSV: () => {
