@@ -359,10 +359,21 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     Object.values(pidControllers).forEach((p) => p.reset());
 
     // Update frontend state after backend confirms reset
+    // Must reset target, pid, and all runtime state to match backend
     set({
       isRunning: false,
       time: 0,
       status: 'STOPPED',
+      target: { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
+      pid: {
+        X:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
+        Y:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
+        Z:     { kp: 3.0,  ki: 0.5,  kd: 1.5  },
+        Roll:  { kp: 2.5,  ki: 0.05, kd: 0.3  },
+        Pitch: { kp: 2.5,  ki: 0.05, kd: 0.3  },
+        Yaw:   { kp: 1.5,  ki: 0.02, kd: 0.2  },
+      },
+      disturbances: { forceX: 0, forceY: 0, forceZ: 0, torqueRoll: 0, torquePitch: 0, torqueYaw: 0 },
       drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
       history: createEmptyHistory(),
       distanceToTarget: 0,

@@ -2591,12 +2591,20 @@ def main():
     EnhancedDroneSimulator(root)
     root.mainloop()
 
-def run_backend():
-    backend.run_server()
+def run_backend(port=8765):
+    backend.run_server(port=port)
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) > 1 and sys.argv[1] == '--backend':
-        run_backend()
+    port = 8765
+    if len(sys.argv) > 1:
+        if sys.argv[1] == '--backend':
+            if '--port' in sys.argv:
+                port_idx = sys.argv.index('--port')
+                if port_idx + 1 < len(sys.argv):
+                    port = int(sys.argv[port_idx + 1])
+            run_backend(port)
+        else:
+            main()
     else:
         main()
