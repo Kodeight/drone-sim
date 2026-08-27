@@ -181,12 +181,12 @@ let requestGeneration = 0;
 const drone = new Drone(DRONE_PRESETS.cinematic);
 
 const pidControllers = {
-  X:     new PID(0.8,  0.02, 0.8,  3, 4, false, 0.5),
-  Y:     new PID(0.8,  0.02, 0.8,  3, 4, false, 0.5),
-  Z:     new PID(4.0,  1.0,  2.5,  5, 8, false, 0.3),
-  Roll:  new PID(4.0,  0.08, 0.5,  1, 1, false, 0.2),
-  Pitch: new PID(4.0,  0.08, 0.5,  1, 1, false, 0.2),
-  Yaw:   new PID(2.5,  0.03, 0.4,  1, 1, true,  0.1),
+  X:     new PID(0.5,  0.03, 0.3,  3, 4, false, 0.5),
+  Y:     new PID(0.5,  0.03, 0.3,  3, 4, false, 0.5),
+  Z:     new PID(3.0,  0.5,  1.5,  5, 8, false, 0.3),
+  Roll:  new PID(2.5,  0.05, 0.3,  1, 1, false, 0.2),
+  Pitch: new PID(2.5,  0.05, 0.3,  1, 1, false, 0.2),
+  Yaw:   new PID(1.5,  0.02, 0.2,  1, 1, true,  0.1),
 };
 
 // Rate damping gains (from PID2.py EnhancedController)
@@ -230,12 +230,12 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0] },
   target: { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
   pid: {
-    X:     { kp: 0.8,  ki: 0.02, kd: 0.8  },
-    Y:     { kp: 0.8,  ki: 0.02, kd: 0.8  },
-    Z:     { kp: 4.0,  ki: 1.0,  kd: 2.5  },
-    Roll:  { kp: 4.0,  ki: 0.08, kd: 0.5  },
-    Pitch: { kp: 4.0,  ki: 0.08, kd: 0.5  },
-    Yaw:   { kp: 2.5,  ki: 0.03, kd: 0.4  },
+    X:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
+    Y:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
+    Z:     { kp: 3.0,  ki: 0.5,  kd: 1.5  },
+    Roll:  { kp: 2.5,  ki: 0.05, kd: 0.3  },
+    Pitch: { kp: 2.5,  ki: 0.05, kd: 0.3  },
+    Yaw:   { kp: 1.5,  ki: 0.02, kd: 0.2  },
   },
   disturbances: { forceX: 0, forceY: 0, forceZ: 0, torqueRoll: 0, torquePitch: 0, torqueYaw: 0 },
   isRunning: false,

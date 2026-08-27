@@ -877,12 +877,12 @@ class DroneHTTPBackend:
             'torqueRoll': 0.0, 'torquePitch': 0.0, 'torqueYaw': 0.0,
         }
         self.pid = {
-            'X': {'kp': 0.8, 'ki': 0.02, 'kd': 0.8},
-            'Y': {'kp': 0.8, 'ki': 0.02, 'kd': 0.8},
-            'Z': {'kp': 4.0, 'ki': 1.0, 'kd': 2.5},
-            'Roll': {'kp': 4.0, 'ki': 0.08, 'kd': 0.5},
-            'Pitch': {'kp': 4.0, 'ki': 0.08, 'kd': 0.5},
-            'Yaw': {'kp': 2.5, 'ki': 0.03, 'kd': 0.4},
+            'X': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
+            'Y': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
+            'Z': {'kp': 3.0, 'ki': 0.5, 'kd': 1.5},
+            'Roll': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
+            'Pitch': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
+            'Yaw': {'kp': 1.5, 'ki': 0.02, 'kd': 0.2},
         }
         self._thread = None
         self._stop_event = threading.Event()
