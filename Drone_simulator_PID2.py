@@ -884,6 +884,18 @@ class DroneHTTPBackend:
             'Pitch': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
             'Yaw': {'kp': 1.5, 'ki': 0.02, 'kd': 0.2},
         }
+        # Controller output storage
+        self.controller_outputs = {
+            'thrust': 0.0,
+            'roll_torque': 0.0,
+            'pitch_torque': 0.0,
+            'yaw_torque': 0.0,
+            'yaw_target': 0.0,
+            'roll_control': 0.0,
+            'pitch_control': 0.0,
+            'yaw_control': 0.0,
+            'throttle': 0.0,
+        }
         self._thread = None
         self._stop_event = threading.Event()
         self._reset_state()
@@ -893,6 +905,17 @@ class DroneHTTPBackend:
         self.controller.reset()
         self.simulation_time = 0.0
         self.running = False
+        self.controller_outputs = {
+            'thrust': 0.0,
+            'roll_torque': 0.0,
+            'pitch_torque': 0.0,
+            'yaw_torque': 0.0,
+            'yaw_target': 0.0,
+            'roll_control': 0.0,
+            'pitch_control': 0.0,
+            'yaw_control': 0.0,
+            'throttle': 0.0,
+        }
 
     def set_target(self, payload: Dict[str, float]):
         for key in ('x', 'y', 'z', 'roll', 'pitch', 'yaw'):
@@ -933,6 +956,16 @@ class DroneHTTPBackend:
             self._reset_state()
             self.target = {'x': 0.0, 'y': 0.0, 'z': 3.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'auto_heading': True}
             self.disturbances = {'forceX': 0.0, 'forceY': 0.0, 'forceZ': 0.0, 'torqueRoll': 0.0, 'torquePitch': 0.0, 'torqueYaw': 0.0}
+            # Reset PID gains to startup defaults (cinematic preset)
+            self.controller.update_gains(self.config)
+            self.pid = {
+                'X': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
+                'Y': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
+                'Z': {'kp': 3.0, 'ki': 0.5, 'kd': 1.5},
+                'Roll': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
+                'Pitch': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
+                'Yaw': {'kp': 1.5, 'ki': 0.02, 'kd': 0.2},
+            }
         elif name == 'toggle':
             self.running = not self.running
 
@@ -952,6 +985,17 @@ class DroneHTTPBackend:
             dt,
         )
 
+        # Store controller outputs for telemetry
+        self.controller_outputs['thrust'] = thrust
+        self.controller_outputs['roll_torque'] = roll_torque
+        self.controller_outputs['pitch_torque'] = pitch_torque
+        self.controller_outputs['yaw_torque'] = yaw_torque
+        self.controller_outputs['yaw_target'] = yaw_target
+        self.controller_outputs['roll_control'] = roll_torque
+        self.controller_outputs['pitch_control'] = pitch_torque
+        self.controller_outputs['yaw_control'] = yaw_torque
+        self.controller_outputs['throttle'] = thrust / (4 * self.drone.config.motor.max_thrust)
+
         self.drone.update(
             thrust,
             roll_torque,
@@ -970,6 +1014,7 @@ class DroneHTTPBackend:
     def state_payload(self):
         d = self.drone
         dist = math.hypot(self.target['x'] - d.x, self.target['y'] - d.y, self.target['z'] - d.z)
+        co = self.controller_outputs
         payload = {
             'time': self.simulation_time,
             'x': d.x,
@@ -989,9 +1034,14 @@ class DroneHTTPBackend:
             'motor3': d.motor_thrusts[2],
             'motor4': d.motor_thrusts[3],
             'thrust': d.motor_thrusts[0] + d.motor_thrusts[1] + d.motor_thrusts[2] + d.motor_thrusts[3],
-            'roll_torque': 0.0,
-            'pitch_torque': 0.0,
-            'yaw_torque': 0.0,
+            'roll_torque': co['roll_torque'],
+            'pitch_torque': co['pitch_torque'],
+            'yaw_torque': co['yaw_torque'],
+            'yaw_target': co['yaw_target'],
+            'roll_control': co['roll_control'],
+            'pitch_control': co['pitch_control'],
+            'yaw_control': co['yaw_control'],
+            'throttle': co['throttle'],
             'distanceToTarget': dist,
             'status': 'ON_TARGET' if dist < 0.15 else 'TRACKING' if self.running else 'STOPPED',
             'target': {**self.target},

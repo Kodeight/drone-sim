@@ -124,6 +124,21 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
   const clonedScene   = useRef<THREE.Object3D | null>(null);
   const _decomposePos = useRef(new THREE.Vector3());
 
+  // Interpolation refs for smooth visualization (decoupled from React render cycle)
+  const prevStateRef = useRef<{
+    x: number; y: number; z: number;
+    roll: number; pitch: number; yaw: number;
+    quaternion: THREE.Quaternion;
+    position: THREE.Vector3;
+  } | null>(null);
+  const currentStateRef = useRef<{
+    x: number; y: number; z: number;
+    roll: number; pitch: number; yaw: number;
+    quaternion: THREE.Quaternion;
+    position: THREE.Vector3;
+  } | null>(null);
+  const interpFactorRef = useRef(0);
+
   const propGeometry = useMemo(() => createPropellerGeometry(), []);
 
   useEffect(() => {
@@ -154,7 +169,7 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
   useFrame((_, delta) => {
     if (!simGroupRef.current) return;
 
-    const { x, y, z, roll, pitch, yaw } = drone;
+    const { x, y, z, roll, pitch, yaw, motorThrusts } = drone;
 
     // ── Attitude conversion: Python (Z-up) → Three.js (Y-up)
     // Using R_three = S @ R_sim @ inverse(S) where:
@@ -187,20 +202,63 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
       0, 0, 0, 1,
     ];
 
-    simGroupRef.current.matrix.fromArray(elements);
-    simGroupRef.current.matrix.decompose(
-      _decomposePos.current,
-      simGroupRef.current.quaternion,
-      simGroupRef.current.scale
-    );
+    const newQuaternion = new THREE.Quaternion();
+    newQuaternion.setFromRotationMatrix(new THREE.Matrix4().fromArray(elements));
+    const newPosition = new THREE.Vector3(x, z, -y);
 
-    // ── Position conversion: Python Z-up → Three.js Y-up
-    // X_three = X_sim, Y_three = Z_sim, Z_three = -Y_sim
-    // Set AFTER decompose since the rotation matrix has no translation
-    simGroupRef.current.position.set(x, z, -y);
+    // Update authoritative state refs when new backend data arrives
+    // Store previous state for interpolation
+    if (currentStateRef.current) {
+      prevStateRef.current = {
+        x: currentStateRef.current.x,
+        y: currentStateRef.current.y,
+        z: currentStateRef.current.z,
+        roll: currentStateRef.current.roll,
+        pitch: currentStateRef.current.pitch,
+        yaw: currentStateRef.current.yaw,
+        quaternion: currentStateRef.current.quaternion.clone(),
+        position: currentStateRef.current.position.clone(),
+      };
+    }
+
+    currentStateRef.current = {
+      x, y, z, roll, pitch, yaw,
+      quaternion: newQuaternion,
+      position: newPosition,
+    };
+
+    // Reset interpolation factor when new state arrives
+    interpFactorRef.current = 0;
+
+    // ── Interpolation for smooth visualization ───────────────────────────
+    // Physics updates at ~100Hz (0.01s), render at 60Hz (0.016s)
+    // Interpolate between previous and current authoritative state
+    const prev = prevStateRef.current;
+    const curr = currentStateRef.current;
+
+    let interpQuaternion: THREE.Quaternion;
+    let interpPosition: THREE.Vector3;
+
+    if (prev && curr) {
+      // Advance interpolation factor
+      interpFactorRef.current = Math.min(1, interpFactorRef.current + delta * 60); // ~60 FPS interpolation speed
+
+      interpQuaternion = new THREE.Quaternion().copy(prev.quaternion).slerp(curr.quaternion, interpFactorRef.current);
+      interpPosition = new THREE.Vector3().copy(prev.position).lerp(curr.position, interpFactorRef.current);
+    } else if (curr) {
+      // First frame - use current state directly
+      interpQuaternion = curr.quaternion;
+      interpPosition = curr.position;
+    } else {
+      return; // No state yet
+    }
+
+    // Apply interpolated transform
+    simGroupRef.current.quaternion.copy(interpQuaternion);
+    simGroupRef.current.position.copy(interpPosition);
 
     // ── Propeller spin ──────────────────────────────────────────────────
-    const thrusts = drone.motorThrusts;
+    const thrusts = motorThrusts;
     propGroupRefs.current.forEach((group, i) => {
       if (!group) return;
       const dir = PROP_DIRECTIONS[i] ?? 1;

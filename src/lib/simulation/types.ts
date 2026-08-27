@@ -12,6 +12,15 @@ export interface DroneState {
   q: number;
   r: number;
   motorThrusts: [number, number, number, number];
+  // Controller outputs (from Python backend)
+  rollTorque?: number;
+  pitchTorque?: number;
+  yawTorque?: number;
+  yawTarget?: number;
+  rollControl?: number;
+  pitchControl?: number;
+  yawControl?: number;
+  throttle?: number;
 }
 
 export interface TargetState {

@@ -363,7 +363,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       isRunning: false,
       time: 0,
       status: 'STOPPED',
-      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0] },
+      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
@@ -466,7 +466,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
       const state = response.data;
 
-      // Update drone state from backend
+      // Update drone state from backend (including controller outputs)
       set({
         drone: {
           x: state.x,
@@ -482,6 +482,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           q: state.q,
           r: state.r,
           motorThrusts: state.motor1 !== undefined ? [state.motor1, state.motor2, state.motor3, state.motor4] : [0, 0, 0, 0],
+          rollTorque: state.roll_torque,
+          pitchTorque: state.pitch_torque,
+          yawTorque: state.yaw_torque,
+          yawTarget: state.yaw_target,
+          rollControl: state.roll_control,
+          pitchControl: state.pitch_control,
+          yawControl: state.yaw_control,
+          throttle: state.throttle,
         },
         time: state.time,
         distanceToTarget: state.distanceToTarget,
@@ -499,13 +507,13 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       }, get().target);
       set({ history: newHistory });
 
-      // Update controller outputs from backend data
+      // Update controller outputs from backend data (actual controller outputs, not drone state)
       set({
         controllerOutputs: {
-          roll: state.roll,
-          pitch: state.pitch,
-          yaw: state.yaw,
-          throttle: state.thrust / 4.0,
+          roll: state.roll_control ?? state.roll_torque ?? 0,
+          pitch: state.pitch_control ?? state.pitch_torque ?? 0,
+          yaw: state.yaw_control ?? state.yaw_torque ?? 0,
+          throttle: state.throttle ?? (state.thrust / (4 * 4.5)), // fallback
         },
       });
     }).catch(() => {});
