@@ -74,23 +74,33 @@ var spawn = require('child_process').spawn;
 var pythonProcess = null;
 
 function startPythonBackend() {
+  console.log('[Main] Starting Python backend...');
   pythonProcess = spawn('python', ['Drone_simulator_PID2.py', '--backend'], {
     cwd: path.join(__dirname, '..'),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   pythonProcess.stdout.on('data', function (data) {
-    console.log('[Python Backend]', data.toString());
+    console.log('[Python Backend stdout]', data.toString());
   });
 
   pythonProcess.stderr.on('data', function (data) {
-    console.error('[Python Backend Error]', data.toString());
+    console.error('[Python Backend stderr]', data.toString());
   });
 
   pythonProcess.on('close', function (code) {
     console.log('[Python Backend exited with code ' + code + ']');
     pythonProcess = null;
   });
+
+  pythonProcess.on('error', function (err) {
+    console.error('[Python Backend spawn error]', err);
+  });
+
+  // Log when backend should be ready
+  setTimeout(function () {
+    console.log('[Main] Python backend should be ready on http://127.0.0.1:8765');
+  }, 2000);
 }
 
 function stopPythonBackend() {

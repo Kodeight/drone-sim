@@ -307,6 +307,28 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     get().addLog('SIMULATION', 'Simulation started');
     set({ isRunning: true });
 
+    // Wait for backend health check
+    let backendReady = false;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const resp = await axios.get(`${BACKEND_URL}/health`, { timeout: 1000 });
+        if (resp.data.ok) {
+          backendReady = true;
+          console.log('[startSimulation] Backend health check passed');
+          break;
+        }
+      } catch (e) {
+        console.log('[startSimulation] Waiting for backend...', i + 1);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    if (!backendReady) {
+      console.error('[startSimulation] Backend not ready after 5s');
+      get().addLog('ERROR', 'Backend not ready');
+      set({ isRunning: false });
+      return;
+    }
+
     try {
       const resp = await axios.post(`${BACKEND_URL}/api/command`, { command: 'start' }, { timeout: 2000 });
       console.log('[startSimulation] Backend response:', resp.data);
@@ -479,7 +501,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const currentResetGeneration = get().resetGeneration;
 
     // Fetch state from Python backend (fire-and-forget with sequencing)
-    axios.get(`${BACKEND_URL}/api/state`, { timeout: 1000 }).then((response) => {
+    axios.get(`${BACKEND_URL}/api/state`, { timeout: 5000 }).then((response) => {
       // Discard stale responses (both from older requests AND from before a reset)
       if (currentGeneration !== requestGeneration) {
         return;
