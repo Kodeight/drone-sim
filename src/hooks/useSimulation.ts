@@ -5,30 +5,33 @@ import { useSimulationStore } from '@/store/simulationStore';
 
 export function useSimulation() {
   const rafRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number | null>(null);
+  const pendingRef = useRef(false);
   const isRunning = useSimulationStore((s) => s.isRunning);
   const step = useSimulationStore((s) => s.step);
 
+  // Single-flight polling: wait for response before next request
+  const fetchState = useCallback(async () => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    try {
+      await step(0.016);
+    } finally {
+      pendingRef.current = false;
+    }
+  }, [step]);
+
   const loop = useCallback(
     (timestamp: number) => {
-      if (lastTimeRef.current === null) {
-        lastTimeRef.current = timestamp;
-      }
-
-      lastTimeRef.current = timestamp;
-
-      // Python backend runs its own loop at 100Hz.
-      // We only need to fetch the latest state once per frame.
-      step(0.016);
-
+      // Poll at ~30Hz (33ms) - single flight
+      fetchState();
       rafRef.current = requestAnimationFrame(loop);
     },
-    [step]
+    [fetchState]
   );
 
   useEffect(() => {
     if (isRunning) {
-      lastTimeRef.current = null;
+      pendingRef.current = false;
       rafRef.current = requestAnimationFrame(loop);
     } else {
       if (rafRef.current) {
@@ -40,6 +43,7 @@ export function useSimulation() {
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
     };
   }, [isRunning, loop]);

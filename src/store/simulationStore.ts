@@ -495,20 +495,17 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     get().addLog('CONTROL', `PID preset applied`);
   },
 
-  step: (dt: number) => {
+  step: async (dt: number) => {
     // Request sequencing: increment generation and capture it
     const currentGeneration = ++requestGeneration;
     const currentResetGeneration = get().resetGeneration;
 
-    // Fetch state from Python backend (fire-and-forget with sequencing)
-    axios.get(`${BACKEND_URL}/api/state`, { timeout: 5000 }).then((response) => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/state`, { timeout: 5000 });
+
       // Discard stale responses (both from older requests AND from before a reset)
-      if (currentGeneration !== requestGeneration) {
-        return;
-      }
-      if (currentResetGeneration !== get().resetGeneration) {
-        return; // Reset occurred, discard this response
-      }
+      if (currentGeneration !== requestGeneration) return;
+      if (currentResetGeneration !== get().resetGeneration) return;
 
       const state = response.data;
 
@@ -564,11 +561,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           throttle: state.throttle ?? (state.thrust / (4 * 4.5)), // fallback
         },
       });
-    }).catch((err: unknown) => {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[step] Failed to fetch state:', msg);
       get().addLog('ERROR', `State fetch failed: ${msg}`);
-    });
+    }
   },
 
   exportCSV: () => {
