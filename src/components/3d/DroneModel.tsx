@@ -179,10 +179,11 @@ export default function DroneModel({ onLoaded }: DroneModelGLBProps) {
     const r33 = cp * cr;
 
     // R_three = S @ R_sim @ S^{-1}
+    // Three.js Matrix4.fromArray expects column-major order, so transpose from row-major
     const elements = [
-      r11, r13, -r12, 0,
-      r31, r33, -r32, 0,
-      -r21, -r23, r22, 0,
+      r11, r31, -r21, 0,
+      r13, r33, -r23, 0,
+      -r12, -r32, r22, 0,
       0, 0, 0, 1,
     ];
 

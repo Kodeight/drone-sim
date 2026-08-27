@@ -173,6 +173,9 @@ function createEmptyHistory(): HistoryData {
 // ─── Python backend URL ──────────────────────────────────────────────────────
 const BACKEND_URL = 'http://127.0.0.1:8765';
 
+// Request sequencing to prevent out-of-order responses
+let requestGeneration = 0;
+
 // ─── Singleton physics objects (kept for reference, physics now from backend) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const drone = new Drone(DRONE_PRESETS.cinematic);
@@ -341,9 +344,21 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   resetSimulation: async () => {
+    get().addLog('SIMULATION', 'Simulation reset');
+
+    // Wait for backend reset to complete BEFORE updating frontend state
+    // This prevents stale /api/state responses from overwriting the reset state
+    try {
+      await axios.post(`${BACKEND_URL}/api/command`, { command: 'reset' });
+    } catch (err) {
+      console.error('Failed to reset backend', err);
+    }
+
+    // Reset local physics objects
     drone.reset();
     Object.values(pidControllers).forEach((p) => p.reset());
-    get().addLog('SIMULATION', 'Simulation reset');
+
+    // Update frontend state after backend confirms reset
     set({
       isRunning: false,
       time: 0,
@@ -353,12 +368,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
     });
-
-    try {
-      await axios.post(`${BACKEND_URL}/api/command`, { command: 'reset' });
-    } catch (err) {
-      console.error('Failed to reset backend', err);
-    }
   },
 
   setSpeed: (speed) => set({ speed }),
@@ -445,8 +454,16 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   step: (dt: number) => {
-    // Fetch state from Python backend (fire-and-forget)
+    // Request sequencing: increment generation and capture it
+    const currentGeneration = ++requestGeneration;
+
+    // Fetch state from Python backend (fire-and-forget with sequencing)
     axios.get(`${BACKEND_URL}/api/state`).then((response) => {
+      // Discard stale responses
+      if (currentGeneration !== requestGeneration) {
+        return;
+      }
+
       const state = response.data;
 
       // Update drone state from backend
