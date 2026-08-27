@@ -74,7 +74,7 @@ var spawn = require('child_process').spawn;
 var pythonProcess = null;
 
 function startPythonBackend() {
-  pythonProcess = spawn('python', ['Drone_simulator_PID2.py'], {
+  pythonProcess = spawn('python', ['Drone_simulator_PID2.py', '--backend'], {
     cwd: path.join(__dirname, '..'),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
