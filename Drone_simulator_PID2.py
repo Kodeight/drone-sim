@@ -2391,6 +2391,35 @@ class DroneHTTPBackend:
                 controller.pid_yaw.set_gains(float(payload.get('kp', controller.pid_yaw.kp)), float(payload.get('ki', controller.pid_yaw.ki)), float(payload.get('kd', controller.pid_yaw.kd)))
             self.pid[key] = {'kp': float(payload.get('kp', self.pid[key]['kp'])), 'ki': float(payload.get('ki', self.pid[key]['ki'])), 'kd': float(payload.get('kd', self.pid[key]['kd'])) }
 
+    def set_drone_preset(self, preset_name: str) -> bool:
+        """Switch authoritative drone config without touching physics equations.
+        Recreates drone/controller from preset and resets state. Preserves API contract."""
+        if preset_name not in DRONE_PRESETS:
+            return False
+        self.config = DRONE_PRESETS[preset_name]()
+        self.drone = EnhancedDrone(self.config)
+        self.controller = EnhancedController(self.config)
+        self._reset_state()
+        # Sync pid dict to preset's defaults (authoritative)
+        for axis in ('x', 'y', 'z', 'roll', 'pitch', 'yaw'):
+            kp, ki, kd = self.config.get_pid(axis)
+            key = axis.capitalize() if axis not in ('x', 'y', 'z') else axis.upper()
+            # axis 'x' -> 'X' already
+            if axis == 'x':
+                key = 'X'
+            elif axis == 'y':
+                key = 'Y'
+            elif axis == 'z':
+                key = 'Z'
+            elif axis == 'roll':
+                key = 'Roll'
+            elif axis == 'pitch':
+                key = 'Pitch'
+            elif axis == 'yaw':
+                key = 'Yaw'
+            self.pid[key] = {'kp': kp, 'ki': ki, 'kd': kd}
+        return True
+
     def command(self, name: str):
         if name == 'start':
             self.running = True
@@ -2563,6 +2592,15 @@ class DroneHTTPBackend:
                         self.send_header('Content-Type', 'application/json')
                         self.end_headers()
                         self.wfile.write(json.dumps({'ok': True, 'disturbances': backend.disturbances}).encode())
+                        return
+
+                    if self.path == '/api/drone':
+                        preset = payload.get('preset') or payload.get('droneId') or payload.get('id') or ''
+                        ok = backend.set_drone_preset(str(preset))
+                        self.send_response(200 if ok else 400)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({'ok': ok, 'preset': preset, 'pid': backend.pid}).encode())
                         return
 
                     self.send_response(404)
