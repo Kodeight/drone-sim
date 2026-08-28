@@ -74,10 +74,18 @@ export interface HistoryData {
   vx: number[];
   vy: number[];
   vz: number[];
+  p: number[];
+  q: number[];
+  r: number[];
   motor1: number[];
   motor2: number[];
   motor3: number[];
   motor4: number[];
+  // Authoritative controller outputs history (for telemetry)
+  ctrlRoll: number[];
+  ctrlPitch: number[];
+  ctrlYaw: number[];
+  ctrlThrottle: number[];
 }
 
 export type PIDAxis = 'X' | 'Y' | 'Z' | 'Roll' | 'Pitch' | 'Yaw';

@@ -165,7 +165,9 @@ function createEmptyHistory(): HistoryData {
     roll: [], pitch: [], yaw: [],
     targetRoll: [], targetPitch: [], targetYaw: [],
     vx: [], vy: [], vz: [],
+    p: [], q: [], r: [],
     motor1: [], motor2: [], motor3: [], motor4: [],
+    ctrlRoll: [], ctrlPitch: [], ctrlYaw: [], ctrlThrottle: [],
   };
 }
 
@@ -182,7 +184,8 @@ function recordHistory(
   history: HistoryData,
   time: number,
   drone: DroneState,
-  target: TargetState
+  target: TargetState,
+  controllerOutputs?: { roll: number; pitch: number; yaw: number; throttle: number }
 ) {
   const h = history;
   h.time.push(time);
@@ -195,10 +198,19 @@ function recordHistory(
   h.targetPitch.push(target.pitch);
   h.targetYaw.push(target.yaw);
   h.vx.push(drone.vx);   h.vy.push(drone.vy);   h.vz.push(drone.vz);
+  h.p.push(deg(drone.p)); h.q.push(deg(drone.q)); h.r.push(deg(drone.r));
   h.motor1.push(drone.motorThrusts[0]);
   h.motor2.push(drone.motorThrusts[1]);
   h.motor3.push(drone.motorThrusts[2]);
   h.motor4.push(drone.motorThrusts[3]);
+  if (controllerOutputs) {
+    h.ctrlRoll.push(controllerOutputs.roll);
+    h.ctrlPitch.push(controllerOutputs.pitch);
+    h.ctrlYaw.push(controllerOutputs.yaw);
+    h.ctrlThrottle.push(controllerOutputs.throttle);
+  } else {
+    h.ctrlRoll.push(0); h.ctrlPitch.push(0); h.ctrlYaw.push(0); h.ctrlThrottle.push(0);
+  }
 
   if (h.time.length > MAX_HISTORY) {
     for (const key of Object.keys(h) as (keyof HistoryData)[]) {
@@ -358,16 +370,20 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   resetSimulation: async () => {
     get().addLog('SIMULATION', 'Simulation reset');
 
-    // Wait for backend reset to complete BEFORE updating frontend state
-    // This prevents stale /api/state responses from overwriting the reset state
+    // 1) Invalidate all in-flight /api/state requests immediately
+    requestGeneration++;
+    const nextResetGen = get().resetGeneration + 1;
+    // 2) Guard updates - pause frontend simulation flag
+    set({ isRunning: false, resetGeneration: nextResetGen });
+
+    // 3) Send reset to Python and 4) wait for acknowledgement
     try {
       await axios.post(`${BACKEND_URL}/api/command`, { command: 'reset' });
     } catch (err) {
       console.error('Failed to reset backend', err);
     }
 
-    // Update frontend state after backend confirms reset
-    // Must reset target, pid, and all runtime state to match backend
+    // 5-7) Synchronize frontend to authoritative reset state & clear telemetry
     set({
       isRunning: false,
       time: 0,
@@ -386,7 +402,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
-      resetGeneration: get().resetGeneration + 1,
+      resetGeneration: nextResetGen,
     });
   },
 
@@ -465,7 +481,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     const currentResetGeneration = get().resetGeneration;
 
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/state`, { timeout: 5000 });
+      const response = await axios.get(`${BACKEND_URL}/api/state`, { timeout: 2000 });
 
       // Discard stale responses (both from older requests AND from before a reset)
       if (currentGeneration !== requestGeneration) return;
@@ -473,7 +489,13 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
       const state = response.data;
 
-      console.log('[step] Received state:', { time: state.time, status: state.status, x: state.x, z: state.z });
+      // Authoritative controller outputs - must use backend values, NOT drone state
+      const ctrlOutputs = {
+        roll: state.roll_control ?? state.roll_torque ?? 0,
+        pitch: state.pitch_control ?? state.pitch_torque ?? 0,
+        yaw: state.yaw_control ?? state.yaw_torque ?? 0,
+        throttle: state.throttle ?? (state.thrust / (4 * (get().droneConfig?.motor?.maxThrust ?? 4.5))),
+      };
 
       // Update drone state from backend (including controller outputs)
       set({
@@ -503,32 +525,36 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         time: state.time,
         distanceToTarget: state.distanceToTarget,
         status: state.status,
+        controllerOutputs: ctrlOutputs,
       });
 
-      // Record history
-      const newHistory = { ...get().history };
+      // Record history with authoritative controller outputs
+      const newHistory: HistoryData = {
+        time: [...get().history.time],
+        x: [...get().history.x], y: [...get().history.y], z: [...get().history.z],
+        targetX: [...get().history.targetX], targetY: [...get().history.targetY], targetZ: [...get().history.targetZ],
+        roll: [...get().history.roll], pitch: [...get().history.pitch], yaw: [...get().history.yaw],
+        targetRoll: [...get().history.targetRoll], targetPitch: [...get().history.targetPitch], targetYaw: [...get().history.targetYaw],
+        vx: [...get().history.vx], vy: [...get().history.vy], vz: [...get().history.vz],
+        p: [...get().history.p], q: [...get().history.q], r: [...get().history.r],
+        motor1: [...get().history.motor1], motor2: [...get().history.motor2], motor3: [...get().history.motor3], motor4: [...get().history.motor4],
+        ctrlRoll: [...get().history.ctrlRoll], ctrlPitch: [...get().history.ctrlPitch], ctrlYaw: [...get().history.ctrlYaw], ctrlThrottle: [...get().history.ctrlThrottle],
+      };
       recordHistory(newHistory, state.time, {
         x: state.x, y: state.y, z: state.z,
         vx: state.vx, vy: state.vy, vz: state.vz,
         roll: state.roll, pitch: state.pitch, yaw: state.yaw,
         p: state.p, q: state.q, r: state.r,
         motorThrusts: state.motor1 !== undefined ? [state.motor1, state.motor2, state.motor3, state.motor4] : [0, 0, 0, 0],
-      }, get().target);
+      } as DroneState, get().target, ctrlOutputs);
       set({ history: newHistory });
-
-      // Update controller outputs from backend data (actual controller outputs, not drone state)
-      set({
-        controllerOutputs: {
-          roll: state.roll_control ?? state.roll_torque ?? 0,
-          pitch: state.pitch_control ?? state.pitch_torque ?? 0,
-          yaw: state.yaw_control ?? state.yaw_torque ?? 0,
-          throttle: state.throttle ?? (state.thrust / (4 * 4.5)), // fallback
-        },
-      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[step] Failed to fetch state:', msg);
-      get().addLog('ERROR', `State fetch failed: ${msg}`);
+      // Only log timeouts at debug level to avoid log spam
+      if (!msg.includes('timeout')) {
+        console.error('[step] Failed to fetch state:', msg);
+        get().addLog('ERROR', `State fetch failed: ${msg}`);
+      }
     }
   },
 
@@ -585,6 +611,10 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       set({ isRunning: false });
     }
 
+    // Invalidate any stale state responses from previous drone
+    requestGeneration++;
+    const nextResetGen = get().resetGeneration + 1;
+
     const pidState: PIDState = {
       X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
       Y:     { kp: config.pidGains.y?.[0] ?? 0.8,  ki: config.pidGains.y?.[1] ?? 0.02, kd: config.pidGains.y?.[2] ?? 0.8 },
@@ -610,12 +640,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set({
       currentDroneId: droneId,
       droneConfig: config,
+      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
       pid: pidState,
       time: 0,
       status: 'STOPPED',
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      resetGeneration: nextResetGen,
       physicalParams: {
         mass: config.mass,
         armLength: config.motor.armLength,
@@ -656,6 +688,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       set({ isRunning: false });
     }
 
+    requestGeneration++;
+    const nextResetGen = get().resetGeneration + 1;
+
     const pidState: PIDState = {
       X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
       Y:     { kp: config.pidGains.y?.[0] ?? 0.8,  ki: config.pidGains.y?.[1] ?? 0.02, kd: config.pidGains.y?.[2] ?? 0.8 },
@@ -681,12 +716,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set({
       currentDroneId: 'custom',
       droneConfig: config,
+      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
       pid: pidState,
       time: 0,
       status: 'STOPPED',
       history: createEmptyHistory(),
       distanceToTarget: 0,
       controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      resetGeneration: nextResetGen,
       physicalParams: {
         mass: config.mass,
         armLength: config.motor.armLength,

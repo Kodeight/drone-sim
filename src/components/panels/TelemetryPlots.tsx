@@ -26,9 +26,9 @@ const CHART_CONFIG: Record<Tab, { keys: { key: string; name: string; color: stri
   Rates: {
     unit: '°/s',
     keys: [
-      { key: 'rollRate',  name: 'Roll Rate',  color: 'var(--chart-1)' },
-      { key: 'pitchRate', name: 'Pitch Rate', color: 'var(--chart-2)' },
-      { key: 'yawRate',   name: 'Yaw Rate',   color: 'var(--chart-3)' },
+      { key: 'p',  name: 'Roll Rate',  color: 'var(--chart-1)' },
+      { key: 'q',  name: 'Pitch Rate', color: 'var(--chart-2)' },
+      { key: 'r',  name: 'Yaw Rate',   color: 'var(--chart-3)' },
     ],
   },
   Position: {
@@ -62,15 +62,14 @@ const CHART_CONFIG: Record<Tab, { keys: { key: string; name: string; color: stri
 };
 
 const CTRL_KEYS = [
-  { key: 'roll',     name: 'Roll Out',   color: 'var(--chart-1)' },
-  { key: 'pitch',    name: 'Pitch Out',  color: 'var(--chart-2)' },
-  { key: 'yaw',      name: 'Yaw Out',    color: 'var(--chart-3)' },
-  { key: 'throttle', name: 'Throttle',   color: 'var(--chart-4)' },
+  { key: 'ctrlRoll',     name: 'Roll Out',   color: 'var(--chart-1)' },
+  { key: 'ctrlPitch',    name: 'Pitch Out',  color: 'var(--chart-2)' },
+  { key: 'ctrlYaw',      name: 'Yaw Out',    color: 'var(--chart-3)' },
+  { key: 'ctrlThrottle', name: 'Throttle',   color: 'var(--chart-4)' },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const toDeg = (r: number) => (r * 180) / Math.PI;
 
 const DOWNSAMPLE = 4; // keep every Nth point for performance
 
@@ -98,9 +97,8 @@ const tooltipStyle = {
 export default function TelemetryPlots() {
   const [activeTab, setActiveTab] = useState<Tab>('Attitude');
   const history          = useSimulationStore((s) => s.history);
-  const controllerOutputs = useSimulationStore((s) => s.controllerOutputs);
 
-  // Build chart data
+  // Build chart data - uses authoritative Python backend history
   const raw = downsample(history.time.map((t, i) => ({
     time:        parseFloat(t.toFixed(1)),
     x:           history.x[i],
@@ -115,9 +113,9 @@ export default function TelemetryPlots() {
     targetRoll:  history.targetRoll[i],
     targetPitch: history.targetPitch[i],
     targetYaw:   history.targetYaw[i],
-    rollRate:    toDeg(history.vx[i] ?? 0) * 0.1, // placeholder angular rate approximation
-    pitchRate:   toDeg(history.vy[i] ?? 0) * 0.1,
-    yawRate:     toDeg(history.vz[i] ?? 0) * 0.1,
+    p:           history.p[i] ?? 0,
+    q:           history.q[i] ?? 0,
+    r:           history.r[i] ?? 0,
     vx:          history.vx[i],
     vy:          history.vy[i],
     vz:          history.vz[i],
@@ -125,21 +123,16 @@ export default function TelemetryPlots() {
     motor2:      history.motor2[i],
     motor3:      history.motor3[i],
     motor4:      history.motor4[i],
+    ctrlRoll:     history.ctrlRoll[i] ?? 0,
+    ctrlPitch:    history.ctrlPitch[i] ?? 0,
+    ctrlYaw:      history.ctrlYaw[i] ?? 0,
+    ctrlThrottle: history.ctrlThrottle[i] ?? 0,
   })));
 
   const cfg = CHART_CONFIG[activeTab];
 
-  // Controller outputs history (use last N points of time axis)
-  const ctrlData = downsample(history.time.slice(-600).map((t, i) => {
-    const absI = history.time.length - 600 + i;
-    return {
-      time: parseFloat(t.toFixed(1)),
-      roll:     i === raw.length - 1 ? controllerOutputs.roll     : 0,
-      pitch:    i === raw.length - 1 ? controllerOutputs.pitch    : 0,
-      yaw:      i === raw.length - 1 ? controllerOutputs.yaw      : 0,
-      throttle: i === raw.length - 1 ? controllerOutputs.throttle : 0,
-    };
-  }));
+  // Controller outputs chart data - authoritative backend values, history-based (not last-point fake)
+  const ctrlData = raw;
 
   return (
     <div style={{ display: 'flex', gap: 0, height: '100%', minHeight: 0 }}>
@@ -238,10 +231,10 @@ export default function TelemetryPlots() {
           </div>
         </div>
 
-        {/* Chart */}
+        {/* Chart - controller outputs use authoritative backend history */}
         <div style={{ flex: 1, padding: '6px 8px', minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={raw} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <LineChart data={ctrlData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="time"
@@ -255,7 +248,7 @@ export default function TelemetryPlots() {
                 <Line
                   key={k.key}
                   type="monotone"
-                  dataKey={k.key === 'roll' ? 'roll' : k.key === 'pitch' ? 'pitch' : k.key === 'yaw' ? 'yaw' : 'motor1'}
+                  dataKey={k.key}
                   name={k.name}
                   stroke={k.color}
                   dot={false}
