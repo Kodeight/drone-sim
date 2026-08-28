@@ -383,12 +383,22 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       console.error('Failed to reset backend', err);
     }
 
-    // 5-7) Synchronize frontend to authoritative reset state & clear telemetry
+    // 5) Receive authoritative reset state from backend
+    let authoritative: any = null;
+    try {
+      const resp = await axios.get(`${BACKEND_URL}/api/state`, { timeout: 2000 });
+      authoritative = resp.data;
+    } catch (err) {
+      console.error('Failed to fetch authoritative reset state', err);
+    }
+
+    // 6-7) Synchronize frontend to authoritative reset state & clear telemetry (fallback to known-good defaults if fetch fails)
+    const s = authoritative;
     set({
       isRunning: false,
-      time: 0,
-      status: 'STOPPED',
-      target: { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
+      time: s?.time ?? 0,
+      status: s?.status ?? 'STOPPED',
+      target: s?.target ? { x: s.target.x ?? 0, y: s.target.y ?? 0, z: s.target.z ?? 3, roll: s.target.roll ?? 0, pitch: s.target.pitch ?? 0, yaw: s.target.yaw ?? 0, autoHeading: s.target.auto_heading ?? true } : { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
       pid: {
         X:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
         Y:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
@@ -398,10 +408,21 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
         Yaw:   { kp: 1.5,  ki: 0.02, kd: 0.2  },
       },
       disturbances: { forceX: 0, forceY: 0, forceZ: 0, torqueRoll: 0, torquePitch: 0, torqueYaw: 0 },
-      drone: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
+      drone: s ? {
+        x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz,
+        roll: s.roll, pitch: s.pitch, yaw: s.yaw, p: s.p, q: s.q, r: s.r,
+        motorThrusts: [s.motor1 ?? 0, s.motor2 ?? 0, s.motor3 ?? 0, s.motor4 ?? 0],
+        rollTorque: s.roll_torque ?? 0, pitchTorque: s.pitch_torque ?? 0, yawTorque: s.yaw_torque ?? 0,
+        yawTarget: s.yaw_target ?? 0, rollControl: s.roll_control ?? 0, pitchControl: s.pitch_control ?? 0, yawControl: s.yaw_control ?? 0, throttle: s.throttle ?? 0,
+      } : { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 0, motorThrusts: [0, 0, 0, 0], rollTorque: 0, pitchTorque: 0, yawTorque: 0, yawTarget: 0, rollControl: 0, pitchControl: 0, yawControl: 0, throttle: 0 },
       history: createEmptyHistory(),
-      distanceToTarget: 0,
-      controllerOutputs: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+      distanceToTarget: s?.distanceToTarget ?? 0,
+      controllerOutputs: s ? {
+        roll: s.roll_control ?? s.roll_torque ?? 0,
+        pitch: s.pitch_control ?? s.pitch_torque ?? 0,
+        yaw: s.yaw_control ?? s.yaw_torque ?? 0,
+        throttle: s.throttle ?? 0,
+      } : { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
       resetGeneration: nextResetGen,
     });
   },

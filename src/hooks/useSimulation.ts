@@ -3,12 +3,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 
-const POLL_INTERVAL_MS = 33; // ~30 Hz
+const POLL_INTERVAL_MS = 33; // ~30 Hz — decoupled from render loop (Python owns physics timing)
 
 export function useSimulation() {
-  const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
   const pendingRef = useRef(false);
-  const lastPollRef = useRef(0);
   const isRunning = useSimulationStore((s) => s.isRunning);
   const step = useSimulationStore((s) => s.step);
 
@@ -23,37 +22,27 @@ export function useSimulation() {
     }
   }, [step]);
 
-  const loop = useCallback(
-    (timestamp: number) => {
-      rafRef.current = requestAnimationFrame(loop);
-      // Throttle to POLL_INTERVAL_MS and single-flight
-      if (timestamp - lastPollRef.current >= POLL_INTERVAL_MS) {
-        lastPollRef.current = timestamp;
-        fetchState();
-      }
-    },
-    [fetchState]
-  );
-
   useEffect(() => {
     if (isRunning) {
       pendingRef.current = false;
-      lastPollRef.current = 0;
-      rafRef.current = requestAnimationFrame(loop);
+      // Immediate authoritative fetch then interval — fully decoupled from RAF/Three.js
+      fetchState();
+      const id = window.setInterval(fetchState, POLL_INTERVAL_MS);
+      timerRef.current = id as unknown as number;
     } else {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
       pendingRef.current = false;
     }
 
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
       pendingRef.current = false;
     };
-  }, [isRunning, loop]);
+  }, [isRunning, fetchState]);
 }
