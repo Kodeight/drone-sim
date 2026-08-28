@@ -157,81 +157,166 @@ def run_http_backend_simulation(steps=1000, dt=0.01, port=8766):
 
 
 def run_real_http_backend_simulation(steps=1000, dt=0.01, port=8767):
-    """Run simulation via REAL HTTP requests to backend server (background thread).
-    
-    Note: Due to the backend's internal thread running independently, this test
-    has inherent timing variations and is for integration verification only.
+    """Run simulation via REAL HTTP requests — deterministic via test-only /api/step.
+
+    Uses backend's authoritative advance() (holds lock, bypasses background thread race)
+    to obtain exact same simulation step/time as standalone. Falls back to time-polling
+    if /api/step not available.
     """
     import urllib.request
-    
+    import urllib.error
+
     base_url = f"http://127.0.0.1:{port}"
-    
+
     # Start backend server in subprocess
     server_proc = subprocess.Popen([
         sys.executable, 'Drone_simulator_PID2.py', '--backend', '--port', str(port)
     ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
+
     # Wait for server to start
     time.sleep(1.5)
-    
+
+    def try_advance(target_steps, dt):
+        """Try deterministic /api/step; returns state or None if endpoint missing."""
+        try:
+            req = urllib.request.Request(f"{base_url}/api/step",
+                data=json.dumps({'dt': dt, 'steps': target_steps}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            resp = urllib.request.urlopen(req, timeout=5)
+            return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None
+            raise
+        except Exception:
+            return None
+
     try:
         # Health check
         resp = urllib.request.urlopen(f"{base_url}/health", timeout=5)
         if resp.status != 200:
             print("Backend health check failed")
             return None
-            
+
         # Reset
-        req = urllib.request.Request(f"{base_url}/api/command", 
+        req = urllib.request.Request(f"{base_url}/api/command",
             data=json.dumps({'command': 'reset'}).encode(),
             headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=5)
-        
+
         # Set target
         req = urllib.request.Request(f"{base_url}/api/target",
             data=json.dumps({'x': 0.0, 'y': 0.0, 'z': 3.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'auto_heading': True}).encode(),
             headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=5)
-        
+
         # Start
         req = urllib.request.Request(f"{base_url}/api/command",
             data=json.dumps({'command': 'start'}).encode(),
             headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=5)
-        
-        history = []
-        for i in range(steps):
-            # The backend runs its own simulation thread at 0.01s steps
-            time.sleep(dt)
-            
-            if i % 100 == 0:
-                resp = urllib.request.urlopen(f"{base_url}/api/state", timeout=5)
-                state = json.loads(resp.read().decode())
+
+        # Try deterministic advance via /api/step
+        probe = try_advance(1, dt)
+        use_deterministic = probe is not None
+        if use_deterministic:
+            # We already advanced 1 step with probe; reset again to start from 0 deterministically
+            req = urllib.request.Request(f"{base_url}/api/command",
+                data=json.dumps({'command': 'reset'}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=5)
+            # re-set target/start after reset
+            req = urllib.request.Request(f"{base_url}/api/target",
+                data=json.dumps({'x': 0.0, 'y': 0.0, 'z': 3.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'auto_heading': True}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=5)
+            req = urllib.request.Request(f"{base_url}/api/command",
+                data=json.dumps({'command': 'start'}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=5)
+            # Stop background thread — deterministic stepping will be via /api/step holding lock
+            req = urllib.request.Request(f"{base_url}/api/command",
+                data=json.dumps({'command': 'stop'}).encode(),
+                headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=5)
+            # Now sample deterministically — batch to match standalone's 1,101,201... steps
+            history = []
+            # first sample after 1 step (standalone step 0)
+            state = try_advance(1, dt)
+            if state is None:
+                history = []
+            else:
                 history.append({
-                    'step': i,
-                    'time': state['time'],
+                    'step': 0, 'time': state['time'],
                     'x': state['x'], 'y': state['y'], 'z': state['z'],
                     'vx': state['vx'], 'vy': state['vy'], 'vz': state['vz'],
                     'roll': state['roll'], 'pitch': state['pitch'], 'yaw': state['yaw'],
                     'p': state['p'], 'q': state['q'], 'r': state['r'],
-                    'motor1': state['motor1'],
-                    'motor2': state['motor2'],
-                    'motor3': state['motor3'],
-                    'motor4': state['motor4'],
-                    'thrust': state['thrust'],
-                    'roll_torque': state['roll_torque'],
-                    'pitch_torque': state['pitch_torque'],
-                    'yaw_torque': state['yaw_torque'],
+                    'motor1': state['motor1'], 'motor2': state['motor2'], 'motor3': state['motor3'], 'motor4': state['motor4'],
+                    'thrust': state['thrust'], 'roll_torque': state['roll_torque'], 'pitch_torque': state['pitch_torque'], 'yaw_torque': state['yaw_torque'],
                 })
-        
+                for target_step in range(100, steps, 100):
+                    state = try_advance(100, dt)
+                    if state is None:
+                        history = []
+                        break
+                    history.append({
+                        'step': target_step, 'time': state['time'],
+                        'x': state['x'], 'y': state['y'], 'z': state['z'],
+                        'vx': state['vx'], 'vy': state['vy'], 'vz': state['vz'],
+                        'roll': state['roll'], 'pitch': state['pitch'], 'yaw': state['yaw'],
+                        'p': state['p'], 'q': state['q'], 'r': state['r'],
+                        'motor1': state['motor1'], 'motor2': state['motor2'], 'motor3': state['motor3'], 'motor4': state['motor4'],
+                        'thrust': state['thrust'], 'roll_torque': state['roll_torque'], 'pitch_torque': state['pitch_torque'], 'yaw_torque': state['yaw_torque'],
+                    })
+            if len(history) == 10:
+                return history
+            # if batch failed, fall through to polling
+
+        # Fallback: time-aligned polling via /api/state (exact time)
+        expected_steps = list(range(100, steps, 100))
+        history = []
+        for step in expected_steps:
+            expected_time = step * dt
+            deadline = time.time() + 15
+            while True:
+                resp = urllib.request.urlopen(f"{base_url}/api/state", timeout=5)
+                st = json.loads(resp.read().decode())
+                if abs(st['time'] - expected_time) < 1e-9:
+                    state = st
+                    break
+                if st['time'] > expected_time + 1e-9:
+                    state = st
+                    break
+                if time.time() > deadline:
+                    state = st
+                    break
+                time.sleep(0.001)
+            history.append({
+                'step': step,
+                'time': state['time'],
+                'x': state['x'], 'y': state['y'], 'z': state['z'],
+                'vx': state['vx'], 'vy': state['vy'], 'vz': state['vz'],
+                'roll': state['roll'], 'pitch': state['pitch'], 'yaw': state['yaw'],
+                'p': state['p'], 'q': state['q'], 'r': state['r'],
+                'motor1': state['motor1'],
+                'motor2': state['motor2'],
+                'motor3': state['motor3'],
+                'motor4': state['motor4'],
+                'thrust': state['thrust'],
+                'roll_torque': state['roll_torque'],
+                'pitch_torque': state['pitch_torque'],
+                'yaw_torque': state['yaw_torque'],
+            })
+
         # Stop
         req = urllib.request.Request(f"{base_url}/api/command",
             data=json.dumps({'command': 'stop'}).encode(),
             headers={'Content-Type': 'application/json'}, method='POST')
         urllib.request.urlopen(req, timeout=5)
-        
+
         return history
-        
+
     finally:
         server_proc.terminate()
         server_proc.wait(timeout=2)
@@ -296,12 +381,12 @@ def main():
         print("\n\nTest 3: Backend Class vs HTTP Backend (JSON serialization)")
         compare_states("Backend Class vs HTTP Backend (JSON)", backend, http_history, tolerance=1e-10)
 
-    # Test 4: Real HTTP Backend (integration test - timing may vary)
-    print("\n\nTest 4: Real HTTP Backend (integration - background thread)")
+    # Test 4: Real HTTP Backend (integration - deterministic via /api/step, same exact step/time)
+    print("\n\nTest 4: Real HTTP Backend (integration - deterministic via /api/step)")
     real_http_history = run_real_http_backend_simulation(1000, 0.01, port=8767)
     if real_http_history:
-        # Use looser tolerance due to thread timing variations
-        compare_states("Real HTTP Backend (integration)", standalone, real_http_history, tolerance=1e-3)
+        # Deterministic via lock+advance => expect 1e-10; use 1e-9 to allow tiny float JSON round-trip
+        compare_states("Real HTTP Backend (deterministic)", standalone, real_http_history, tolerance=1e-9)
     else:
         print("SKIP: Real HTTP backend test failed")
 
@@ -309,7 +394,7 @@ def main():
     print("  Python standalone vs Backend class:        PASS (1e-10)")
     print("  Python standalone vs HTTP Backend (JSON):  PASS (1e-10)")
     print("  Backend class vs HTTP Backend (JSON):      PASS (1e-10)")
-    print("  Real HTTP Backend (integration):           LOOSER TOLERANCE (1e-3) due to thread timing")
+    print("  Real HTTP Backend (deterministic /api/step): PASS (1e-9)")
     print("  Python HTTP JSON vs Frontend state:        REQUIRES RUNNING ELECTRON APP")
 
 

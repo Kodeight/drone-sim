@@ -392,21 +392,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       console.error('Failed to fetch authoritative reset state', err);
     }
 
-    // 6-7) Synchronize frontend to authoritative reset state & clear telemetry (fallback to known-good defaults if fetch fails)
+    // 6-7) Synchronize frontend to authoritative reset state & clear telemetry — PID kept per new spec
     const s = authoritative;
     set({
       isRunning: false,
       time: s?.time ?? 0,
       status: s?.status ?? 'STOPPED',
       target: s?.target ? { x: s.target.x ?? 0, y: s.target.y ?? 0, z: s.target.z ?? 3, roll: s.target.roll ?? 0, pitch: s.target.pitch ?? 0, yaw: s.target.yaw ?? 0, autoHeading: s.target.auto_heading ?? true } : { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
-      pid: {
-        X:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
-        Y:     { kp: 0.5,  ki: 0.03, kd: 0.3  },
-        Z:     { kp: 3.0,  ki: 0.5,  kd: 1.5  },
-        Roll:  { kp: 2.5,  ki: 0.05, kd: 0.3  },
-        Pitch: { kp: 2.5,  ki: 0.05, kd: 0.3  },
-        Yaw:   { kp: 1.5,  ki: 0.02, kd: 0.2  },
-      },
+      // keep current PID gains — backend keeps them too
       disturbances: { forceX: 0, forceY: 0, forceZ: 0, torqueRoll: 0, torquePitch: 0, torqueYaw: 0 },
       drone: s ? {
         x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz,
@@ -645,22 +638,16 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       Yaw:   { kp: config.pidGains.yaw?.[0] ?? 2.5,  ki: config.pidGains.yaw?.[1] ?? 0.03, kd: config.pidGains.yaw?.[2] ?? 0.4 },
     };
 
-    // Authoritative drone switch — backend is single source of truth for mass/inertia/motor
+    // Send PID gains to Python backend (one axis at a time)
     try {
-      await axios.post(`${BACKEND_URL}/api/drone`, { preset: droneId });
-    } catch (err) {
-      console.error('Failed to switch drone on backend', err);
-      // Fallback: try per-axis PID sync
-      try {
-        for (const [axis, gains] of Object.entries(config.pidGains)) {
-          await axios.post(`${BACKEND_URL}/api/pid`, {
-            axis: axis.toLowerCase(),
-            params: { kp: gains[0], ki: gains[1], kd: gains[2] },
-          });
-        }
-      } catch (e2) {
-        console.error('Fallback PID sync also failed', e2);
+      for (const [axis, gains] of Object.entries(config.pidGains)) {
+        await axios.post(`${BACKEND_URL}/api/pid`, {
+          axis: axis.toLowerCase(),
+          params: { kp: gains[0], ki: gains[1], kd: gains[2] },
+        });
       }
+    } catch (err) {
+      console.error('Failed to send PID gains on drone change to backend', err);
     }
 
     get().addLog('CONTROL', `Drone changed to ${config.name}`);

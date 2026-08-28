@@ -2391,35 +2391,6 @@ class DroneHTTPBackend:
                 controller.pid_yaw.set_gains(float(payload.get('kp', controller.pid_yaw.kp)), float(payload.get('ki', controller.pid_yaw.ki)), float(payload.get('kd', controller.pid_yaw.kd)))
             self.pid[key] = {'kp': float(payload.get('kp', self.pid[key]['kp'])), 'ki': float(payload.get('ki', self.pid[key]['ki'])), 'kd': float(payload.get('kd', self.pid[key]['kd'])) }
 
-    def set_drone_preset(self, preset_name: str) -> bool:
-        """Switch authoritative drone config without touching physics equations.
-        Recreates drone/controller from preset and resets state. Preserves API contract."""
-        if preset_name not in DRONE_PRESETS:
-            return False
-        self.config = DRONE_PRESETS[preset_name]()
-        self.drone = EnhancedDrone(self.config)
-        self.controller = EnhancedController(self.config)
-        self._reset_state()
-        # Sync pid dict to preset's defaults (authoritative)
-        for axis in ('x', 'y', 'z', 'roll', 'pitch', 'yaw'):
-            kp, ki, kd = self.config.get_pid(axis)
-            key = axis.capitalize() if axis not in ('x', 'y', 'z') else axis.upper()
-            # axis 'x' -> 'X' already
-            if axis == 'x':
-                key = 'X'
-            elif axis == 'y':
-                key = 'Y'
-            elif axis == 'z':
-                key = 'Z'
-            elif axis == 'roll':
-                key = 'Roll'
-            elif axis == 'pitch':
-                key = 'Pitch'
-            elif axis == 'yaw':
-                key = 'Yaw'
-            self.pid[key] = {'kp': kp, 'ki': ki, 'kd': kd}
-        return True
-
     def command(self, name: str):
         if name == 'start':
             self.running = True
@@ -2429,15 +2400,7 @@ class DroneHTTPBackend:
             self._reset_state()
             self.target = {'x': 0.0, 'y': 0.0, 'z': 3.0, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0, 'auto_heading': True}
             self.disturbances = {'forceX': 0.0, 'forceY': 0.0, 'forceZ': 0.0, 'torqueRoll': 0.0, 'torquePitch': 0.0, 'torqueYaw': 0.0}
-            self.controller.update_gains(self.config)
-            self.pid = {
-                'X': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
-                'Y': {'kp': 0.5, 'ki': 0.03, 'kd': 0.3},
-                'Z': {'kp': 3.0, 'ki': 0.5, 'kd': 1.5},
-                'Roll': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
-                'Pitch': {'kp': 2.5, 'ki': 0.05, 'kd': 0.3},
-                'Yaw': {'kp': 1.5, 'ki': 0.02, 'kd': 0.2},
-            }
+            # Keep current PID gains — do not restore defaults
         elif name == 'toggle':
             self.running = not self.running
 
@@ -2521,8 +2484,19 @@ class DroneHTTPBackend:
 
     def _loop(self):
         while not self._stop_event.is_set():
-            self.step(0.01)
+            with self.lock:
+                self.step(0.01)
             time.sleep(0.01)
+
+    def advance(self, dt: float = 0.01, steps: int = 1):
+        """Test-only deterministic advance (holds lock, bypasses background thread race)."""
+        with self.lock:
+            was_running = self.running
+            self.running = True
+            for _ in range(steps):
+                self.step(dt)
+            self.running = was_running
+            return self.state_payload()
 
     def run_server(self, host: str = '127.0.0.1', port: int = 8765):
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -2539,7 +2513,8 @@ class DroneHTTPBackend:
                         return
 
                     if self.path == '/api/state':
-                        payload = backend.state_payload()
+                        with backend.lock:
+                            payload = backend.state_payload()
                         self.send_response(200)
                         self.send_header('Content-Type', 'application/json')
                         self.end_headers()
@@ -2594,13 +2569,15 @@ class DroneHTTPBackend:
                         self.wfile.write(json.dumps({'ok': True, 'disturbances': backend.disturbances}).encode())
                         return
 
-                    if self.path == '/api/drone':
-                        preset = payload.get('preset') or payload.get('droneId') or payload.get('id') or ''
-                        ok = backend.set_drone_preset(str(preset))
-                        self.send_response(200 if ok else 400)
+                    if self.path == '/api/step':
+                        # Test-only deterministic step (holds lock, bypasses background race)
+                        dt = float(payload.get('dt', 0.01))
+                        steps = int(payload.get('steps', 1))
+                        state = backend.advance(dt=dt, steps=steps)
+                        self.send_response(200)
                         self.send_header('Content-Type', 'application/json')
                         self.end_headers()
-                        self.wfile.write(json.dumps({'ok': ok, 'preset': preset, 'pid': backend.pid}).encode())
+                        self.wfile.write(json.dumps(state).encode())
                         return
 
                     self.send_response(404)
