@@ -1,6 +1,4 @@
 import { create } from 'zustand';
-import { Drone } from '@/lib/simulation/Drone';
-import { PID } from '@/lib/simulation/PID';
 import { deg, rad, hypot } from '@/lib/utils/math';
 import {
   DroneState,
@@ -179,22 +177,6 @@ let requestGeneration = 0;
 
 // Reset generation counter - increments on each reset to invalidate interpolation state
 let resetGeneration = 0;
-
-// ─── Singleton physics objects (kept for reference, physics now from backend) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-const drone = new Drone(DRONE_PRESETS.cinematic);
-
-const pidControllers = {
-  X:     new PID(0.5,  0.03, 0.3,  3, 4, false, 0.5),
-  Y:     new PID(0.5,  0.03, 0.3,  3, 4, false, 0.5),
-  Z:     new PID(3.0,  0.5,  1.5,  5, 8, false, 0.3),
-  Roll:  new PID(2.5,  0.05, 0.3,  1, 1, false, 0.2),
-  Pitch: new PID(2.5,  0.05, 0.3,  1, 1, false, 0.2),
-  Yaw:   new PID(1.5,  0.02, 0.2,  1, 1, true,  0.1),
-};
-
-// Rate damping gains (from PID2.py EnhancedController)
-const RATE_DAMPING = { roll: 0.05, pitch: 0.05, yaw: 0.03 };
 
 function recordHistory(
   history: HistoryData,
@@ -384,10 +366,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       console.error('Failed to reset backend', err);
     }
 
-    // Reset local physics objects
-    drone.reset();
-    Object.values(pidControllers).forEach((p) => p.reset());
-
     // Update frontend state after backend confirms reset
     // Must reset target, pid, and all runtime state to match backend
     set({
@@ -427,19 +405,13 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   updatePID: async (axis, param, value) => {
-    // Update local PID state in store
-    set((s) => {
-      const controller = pidControllers[axis as keyof typeof pidControllers];
-      if (controller) {
-        (controller as any)[param] = value;
-      }
-      return {
-        pid: {
-          ...s.pid,
-          [axis]: { ...s.pid[axis as keyof PIDState], [param]: value },
-        },
-      };
-    });
+    // Update local PID state in store (for UI display only)
+    set((s) => ({
+      pid: {
+        ...s.pid,
+        [axis]: { ...s.pid[axis as keyof PIDState], [param]: value },
+      },
+    }));
 
     // Send updated gains to Python backend
     try {
@@ -471,14 +443,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   },
 
   applyPreset: async (preset) => {
-    // Apply PID gains to local controllers
-    for (const [axis, params] of Object.entries(preset)) {
-      const controller = pidControllers[axis as keyof typeof pidControllers];
-      if (controller) {
-        controller.setGains(params.kp, params.ki, params.kd);
-      }
-    }
-
     // Send PID gains to Python backend (one axis at a time)
     try {
       for (const [axis, params] of Object.entries(preset)) {
@@ -621,21 +585,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       set({ isRunning: false });
     }
 
-    drone.applyConfig(config);
-    drone.reset();
-    Object.values(pidControllers).forEach((p) => p.reset());
-
-    // Apply drone's built-in PID gains
-    const gainsMap: Record<string, keyof typeof pidControllers> = {
-      x: 'X', y: 'Y', z: 'Z', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw',
-    };
-    for (const [axis, gains] of Object.entries(config.pidGains)) {
-      const key = gainsMap[axis];
-      if (key && pidControllers[key]) {
-        pidControllers[key].setGains(gains[0], gains[1], gains[2]);
-      }
-    }
-
     const pidState: PIDState = {
       X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
       Y:     { kp: config.pidGains.y?.[0] ?? 0.8,  ki: config.pidGains.y?.[1] ?? 0.02, kd: config.pidGains.y?.[2] ?? 0.8 },
@@ -661,7 +610,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     set({
       currentDroneId: droneId,
       droneConfig: config,
-      drone: { ...drone.state },
       pid: pidState,
       time: 0,
       status: 'STOPPED',
@@ -707,34 +655,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
     if (wasRunning) {
       set({ isRunning: false });
     }
-    drone.applyConfig(config);
-    drone.reset();
-
-    // Send PID gains to Python backend (one axis at a time)
-    const gainsMap: Record<string, string> = {
-      x: 'X', y: 'Y', z: 'Z', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw',
-    };
-    try {
-      for (const [axis, gains] of Object.entries(config.pidGains)) {
-        const key = gainsMap[axis];
-        if (key) {
-          await axios.post(`${BACKEND_URL}/api/pid`, {
-            axis: axis.toLowerCase(),
-            params: { kp: gains[0], ki: gains[1], kd: gains[2] },
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Failed to apply custom drone on backend', err);
-    }
-
-    // Update local PID controllers (for reference/UI)
-    for (const [axis, gains] of Object.entries(config.pidGains)) {
-      const key = gainsMap[axis] as keyof typeof pidControllers;
-      if (key && pidControllers[key]) {
-        pidControllers[key].setGains(gains[0], gains[1], gains[2]);
-      }
-    }
 
     const pidState: PIDState = {
       X:     { kp: config.pidGains.x?.[0] ?? 0.8,  ki: config.pidGains.x?.[1] ?? 0.02, kd: config.pidGains.x?.[2] ?? 0.8 },
@@ -745,11 +665,22 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       Yaw:   { kp: config.pidGains.yaw?.[0] ?? 2.5,  ki: config.pidGains.yaw?.[1] ?? 0.03, kd: config.pidGains.yaw?.[2] ?? 0.4 },
     };
 
+    // Send PID gains to Python backend (one axis at a time)
+    try {
+      for (const [axis, gains] of Object.entries(config.pidGains)) {
+        await axios.post(`${BACKEND_URL}/api/pid`, {
+          axis: axis.toLowerCase(),
+          params: { kp: gains[0], ki: gains[1], kd: gains[2] },
+        });
+      }
+    } catch (err) {
+      console.error('Failed to apply custom drone on backend', err);
+    }
+
     get().addLog('CONTROL', `Custom drone applied`);
     set({
       currentDroneId: 'custom',
       droneConfig: config,
-      drone: { ...drone.state },
       pid: pidState,
       time: 0,
       status: 'STOPPED',
