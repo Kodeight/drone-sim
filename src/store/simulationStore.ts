@@ -370,13 +370,16 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   resetSimulation: async () => {
     get().addLog('SIMULATION', 'Simulation reset');
 
+    // 3) Preserve current PID before reset per fix.md
+    const preservedPid = get().pid;
+
     // 1) Invalidate all in-flight /api/state requests immediately
     requestGeneration++;
     const nextResetGen = get().resetGeneration + 1;
     // 2) Guard updates - pause frontend simulation flag
     set({ isRunning: false, resetGeneration: nextResetGen });
 
-    // 3) Send reset to Python and 4) wait for acknowledgement
+    // 4) Send reset to Python and wait for acknowledgement (backend keeps PID per new spec)
     try {
       await axios.post(`${BACKEND_URL}/api/command`, { command: 'reset' });
     } catch (err) {
@@ -392,14 +395,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       console.error('Failed to fetch authoritative reset state', err);
     }
 
-    // 6-7) Synchronize frontend to authoritative reset state & clear telemetry — PID kept per new spec
+    // 6-7) Synchronize frontend to authoritative reset state & clear telemetry — restore preserved PID
     const s = authoritative;
     set({
       isRunning: false,
       time: s?.time ?? 0,
       status: s?.status ?? 'STOPPED',
       target: s?.target ? { x: s.target.x ?? 0, y: s.target.y ?? 0, z: s.target.z ?? 3, roll: s.target.roll ?? 0, pitch: s.target.pitch ?? 0, yaw: s.target.yaw ?? 0, autoHeading: s.target.auto_heading ?? true } : { x: 0, y: 0, z: 3, roll: 0, pitch: 0, yaw: 0, autoHeading: true },
-      // keep current PID gains — backend keeps them too
+      pid: preservedPid,
       disturbances: { forceX: 0, forceY: 0, forceZ: 0, torqueRoll: 0, torquePitch: 0, torqueYaw: 0 },
       drone: s ? {
         x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz,
