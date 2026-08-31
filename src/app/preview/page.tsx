@@ -93,9 +93,9 @@ export default function DronePreviewPage() {
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#f0f4f8', position: 'relative' }}>
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, background: 'rgba(255,255,255,0.9)', padding: '8px 12px', borderRadius: 8, fontFamily: 'monospace', fontSize: 12, border: '1px solid #d7dce6' }}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>DroneModel Preview (isolated)</div>
-        <div>4 motors × 3 blades — propellers driven by motorThrusts</div>
-        <div style={{ color: '#6b7280' }}>OrbitControls · Grid · Axes · auto-framed · Y/Z-swapped display frame (x,-y,z)</div>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>DroneModel Preview (isolated) — updated</div>
+        <div>4 motors × 2 blades (8 total) — propellers driven by motorThrusts</div>
+        <div style={{ color: '#6b7280' }}>OrbitControls · Grid · Axes · auto-framed · original display frame (x,z,-y) · Y is up</div>
         <div style={{ color: '#6b7280', fontSize: 11 }}>{box ? `box ${box.min.x.toFixed(2)},${box.min.y.toFixed(2)},${box.min.z.toFixed(2)} → ${box.max.x.toFixed(2)},${box.max.y.toFixed(2)},${box.max.z.toFixed(2)}` : 'framing…'}</div>
         <a href="/" style={{ color: '#2f6fed', textDecoration: 'underline' }}>
           ← Back to simulator
