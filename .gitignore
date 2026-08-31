@@ -12,6 +12,15 @@ build/
 dist/
 dist-ssr/
 
+# drone reference evidence (generated zones) - correctly ignored at any nesting level
+drone-zones
+drone-zones/
+**/drone-zones
+**/drone-zones/
+reference/drone-zones
+reference/drone-zones/
+**/drone-zones/**
+
 # Runtime
 *.log
 npm-debug.log*

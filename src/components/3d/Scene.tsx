@@ -128,7 +128,7 @@ function CameraController({ fitTrigger, modelBox }: CameraControllerProps) {
       enabled={true}
       target={
         cameraMode === 'follow'
-          ? [drone.x, drone.z, -drone.y]
+          ? [drone.x, -drone.y, drone.z]
           : undefined
       }
     />
@@ -141,8 +141,8 @@ function DroneTargetLine({ drone, target }: { drone: { x: number; y: number; z: 
   const lineObj = useMemo(() => {
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array([
-      drone.x * VISUAL_SCALE, drone.z * VISUAL_SCALE, -drone.y * VISUAL_SCALE,
-      target.x * VISUAL_SCALE, target.z * VISUAL_SCALE, -target.y * VISUAL_SCALE,
+      drone.x * VISUAL_SCALE, -drone.y * VISUAL_SCALE, drone.z * VISUAL_SCALE,
+      target.x * VISUAL_SCALE, -target.y * VISUAL_SCALE, target.z * VISUAL_SCALE,
     ]);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const material = new THREE.LineDashedMaterial({ color: '#22c55e', dashSize: 0.3, gapSize: 0.15, transparent: true, opacity: 0.5 });
@@ -172,7 +172,7 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
   const flightPathPoints = history.x.length > 2
     ? history.x.slice(-500).map((x, i) => {
         const idx = history.x.length - 500 + i;
-        return [x * VISUAL_SCALE, history.z[idx] * VISUAL_SCALE, -history.y[idx] * VISUAL_SCALE] as [number, number, number];
+        return [x * VISUAL_SCALE, -history.y[idx] * VISUAL_SCALE, history.z[idx] * VISUAL_SCALE] as [number, number, number];
       })
     : [];
 
@@ -188,8 +188,8 @@ function SceneContent({ fitTrigger, onModelLoaded, modelBox }: SceneContentProps
         <TargetMarker
           position={[
             target.x * VISUAL_SCALE,
-            target.z * VISUAL_SCALE,
             -target.y * VISUAL_SCALE,
+            target.z * VISUAL_SCALE,
           ]}
         />
       )}
