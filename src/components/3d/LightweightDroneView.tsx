@@ -77,7 +77,7 @@ function FallbackSceneContent({ onBox }: { onBox: (b: THREE.Box3) => void }) {
       />
       <axesHelper args={[2]} />
       <GizmoHelper alignment="bottom-left" margin={[60, 60]}>
-        <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="#0f172a" />
+        <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labels={['X', 'Z', 'Y']} labelColor="#0f172a" />
       </GizmoHelper>
 
       <DroneModel onLoaded={onBox} />
@@ -90,6 +90,8 @@ export default function LightweightDroneView() {
   const [use2D, setUse2D] = useState(false);
   const handleBox = useCallback((b: THREE.Box3) => setBox(b), []);
   const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+  const theme = useSimulationStore((s) => s.theme);
+  const bgColor = theme === 'dark' ? '#050B14' : '#f0f4f8';
 
   useEffect(() => {
     console.log('[LightweightFallback] mounted — isElectron:', isElectron, 'using Preview-compatible lightweight renderer (no shadows, low-power)');
@@ -108,20 +110,20 @@ export default function LightweightDroneView() {
 
   return (
     <WebGLErrorBoundary fallback={<Fallback2DView />}>
-      <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--bg-app, #f0f4f8)' }}>
+      <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--bg-app)' }}>
         <div
           style={{
             position: 'absolute',
             top: 8,
             left: 8,
             zIndex: 5,
-            background: 'rgba(245,158,11,0.12)',
-            border: '1px solid rgba(245,158,11,0.35)',
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border)',
             padding: '6px 10px',
             borderRadius: 6,
             fontFamily: 'monospace',
             fontSize: 10,
-            color: 'var(--text-secondary, #6b7280)',
+            color: 'var(--text-muted)',
           }}
         >
           Low-GPU fallback — Preview rendering
@@ -139,7 +141,7 @@ export default function LightweightDroneView() {
             failIfMajorPerformanceCaveat: false,
             preserveDrawingBuffer: false,
           }}
-          style={{ width: '100%', height: '100%', background: isElectron ? '#050B14' : '#f0f4f8' }}
+          style={{ width: '100%', height: '100%', background: bgColor }}
           fallback={<Fallback2DView />}
           onCreated={({ gl }) => {
             console.log('[LightweightFallback] WebGLRenderer created', {

@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSimulationStore } from '@/store/simulationStore';
 
 function Shimmer({ style }: { style?: React.CSSProperties }) {
+  const theme = useSimulationStore((s) => s.theme);
+  const isDark = theme === 'dark';
   return (
     <div style={{
       borderRadius: 4,
@@ -12,7 +15,9 @@ function Shimmer({ style }: { style?: React.CSSProperties }) {
     }}>
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
+        background: isDark
+          ? 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)'
+          : 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.03) 40%, rgba(0,0,0,0.06) 50%, rgba(0,0,0,0.03) 60%, transparent 100%)',
         animation: 'shimmer 1.8s ease-in-out infinite',
       }} />
     </div>
@@ -82,8 +87,8 @@ export default function SkeletonLoader({ message }: { message?: string }) {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-            {/* 3D viewport area */}
-            <div style={{ flex: 1, position: 'relative', background: '#0f1117' }}>
+            {/* 3D viewport area — follows theme (was hardcoded #0f1117 dark-only) */}
+            <div style={{ flex: 1, position: 'relative', background: 'var(--bg-tertiary)' }}>
               {/* Viewport controls bar */}
               <div style={{
                 position: 'absolute', top: 8, left: 8, right: 8,

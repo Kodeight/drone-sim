@@ -72,7 +72,7 @@ function PreviewScene({ onBox }: { onBox: (b: THREE.Box3) => void }) {
       />
       <axesHelper args={[2]} />
       <GizmoHelper alignment="bottom-left" margin={[60, 60]}>
-        <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labelColor="#0f172a" />
+        <GizmoViewport axisColors={['#ef4444', '#22c55e', '#3b82f6']} labels={['X', 'Z', 'Y']} labelColor="#0f172a" />
       </GizmoHelper>
       <DroneModel onLoaded={handleBox} />
       <OrbitControls
@@ -89,15 +89,16 @@ function PreviewScene({ onBox }: { onBox: (b: THREE.Box3) => void }) {
 export default function DronePreviewPage() {
   const [box, setBox] = useState<THREE.Box3 | null>(null);
   const handleBox = useCallback((b: THREE.Box3) => setBox(b), []);
+  const theme = useSimulationStore((s) => s.theme);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#f0f4f8', position: 'relative' }}>
-      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, background: 'rgba(255,255,255,0.9)', padding: '8px 12px', borderRadius: 8, fontFamily: 'monospace', fontSize: 12, border: '1px solid #d7dce6' }}>
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>DroneModel Preview (isolated) — updated</div>
-        <div>4 motors × 2 blades (8 total) — propellers driven by motorThrusts</div>
-        <div style={{ color: '#6b7280' }}>OrbitControls · Grid · Axes · auto-framed · original display frame (x,z,-y) · Y is up</div>
-        <div style={{ color: '#6b7280', fontSize: 11 }}>{box ? `box ${box.min.x.toFixed(2)},${box.min.y.toFixed(2)},${box.min.z.toFixed(2)} → ${box.max.x.toFixed(2)},${box.max.y.toFixed(2)},${box.max.z.toFixed(2)}` : 'framing…'}</div>
-        <a href="/" style={{ color: '#2f6fed', textDecoration: 'underline' }}>
+    <div style={{ width: '100vw', height: '100vh', background: 'var(--bg-app)', position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, background: 'var(--bg-panel)', padding: '8px 12px', borderRadius: 8, fontFamily: 'monospace', fontSize: 12, border: '1px solid var(--border)' }}>
+        <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)' }}>DroneModel Preview (isolated) — updated</div>
+        <div style={{ color: 'var(--text-secondary)' }}>4 motors × 2 blades (8 total) — propellers driven by motorThrusts</div>
+        <div style={{ color: 'var(--text-muted)' }}>OrbitControls · Grid · Axes · auto-framed · original display frame (x,z,-y) · Y is up</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{box ? `box ${box.min.x.toFixed(2)},${box.min.y.toFixed(2)},${box.min.z.toFixed(2)} → ${box.max.x.toFixed(2)},${box.max.y.toFixed(2)},${box.max.z.toFixed(2)}` : 'framing…'}</div>
+        <a href="/" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
           ← Back to simulator
         </a>
       </div>
