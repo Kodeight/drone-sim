@@ -2,6 +2,7 @@
 
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, Component, ReactNode } from 'react';
 import dynamic from 'next/dynamic';
+import * as THREE from 'three';
 import { detectWebGL } from '@/lib/webglDetect';
 import Fallback2DView from './Fallback2DView';
 import type { SceneHandle } from './Scene';
@@ -38,29 +39,49 @@ function SceneSwitcherInner(_: unknown, ref: React.ForwardedRef<SceneHandle>) {
     const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
     console.log('[SceneSwitcher] WebGL probe', info, 'isElectron:', isElectron);
 
+    // Direct 2D fallback for known blocklisted Intel D3D9 on Electron (your log: ANGLE D3D9Ex vs_3_0, Sandboxed=yes, BindToCurrentSequence failed)
+    const rendererStr = `${info.renderer || ''} ${info.version || ''} ${info.vendor || ''}`;
+    const isProblematicIntelD3D9 =
+      rendererStr.includes('Intel') && (rendererStr.includes('D3D9') || rendererStr.includes('Direct3D9Ex') || info.version?.includes('WebGL 1'));
+    if (isProblematicIntelD3D9 && isElectron) {
+      console.warn('[SceneSwitcher] Detected Intel HD + D3D9Ex on Electron → direct 2D fallback (no WebGL attempt)');
+      setMode('fallback2d');
+      return;
+    }
+
     if (!info.available) {
       console.warn('[SceneSwitcher] WebGL not available → low-GPU SceneLowGPU');
       setMode('low');
       return;
     }
 
-    // Test if we can actually get a context (Electron sandboxed D3D9 may report available but fail)
+    // Realistic test: try to create a WebGLRenderer like Scene will (antialias, 800x600) — 2x2 canvas lies
     try {
       const c = document.createElement('canvas');
-      c.width = 2;
-      c.height = 2;
-      const gl: any =
-        c.getContext('webgl2', { antialias: false } as any) ||
-        c.getContext('webgl', { antialias: false } as any) ||
-        c.getContext('experimental-webgl', { antialias: false } as any);
-      if (!gl) throw new Error('test context null');
-      const lose = gl.getExtension('WEBGL_lose_context');
+      c.width = 800;
+      c.height = 600;
+      // Try WebGLRenderer creation, not just getContext
+      const testRenderer: any = new (THREE as any).WebGLRenderer({
+        canvas: c,
+        antialias: true,
+        alpha: true,
+        powerPreference: 'default',
+        failIfMajorPerformanceCaveat: false,
+      });
+      testRenderer.dispose();
+      const gl: any = c.getContext('webgl') || c.getContext('experimental-webgl');
+      const lose = gl?.getExtension('WEBGL_lose_context');
       if (lose) lose.loseContext();
-      console.log('[SceneSwitcher] test context OK → normal Scene (high-GPU)');
+      console.log('[SceneSwitcher] realistic WebGLRenderer test OK → normal Scene (high-GPU)');
       setMode('normal');
     } catch (e) {
-      console.warn('[SceneSwitcher] test context failed → low-GPU', String(e));
-      setMode('low');
+      console.warn('[SceneSwitcher] realistic WebGLRenderer test failed → fallback', String(e));
+      // On Electron, go straight to 2D to avoid double WebGL failure loop (normal→low both fail)
+      if (isElectron) {
+        setMode('fallback2d');
+      } else {
+        setMode('low');
+      }
     }
   }, []);
 
