@@ -11,6 +11,7 @@ import TargetMarker from './TargetMarker';
 import FlightPath from './FlightPath';
 import { WebGLErrorBoundary } from './WebGLErrorBoundary';
 import WebGLFallback from './WebGLFallback';
+import LightweightDroneView from './LightweightDroneView';
 import { detectWebGL } from '@/lib/webglDetect';
 
 // ─── Visual scale: 1 sim meter = 1 scene unit ──────────────────────────────
@@ -256,13 +257,46 @@ function SuppressThreeErrors({ children }: { children: React.ReactNode }) {
 // ─── Main exported Scene ──────────────────────────────────────────────────────
 
 const Scene = forwardRef<SceneHandle>((_, ref) => {
-  const [webglAvailable, setWebglAvailable] = useState<boolean | null>(null);
+  const [renderMode, setRenderMode] = useState<'checking' | 'normal' | 'fallback'>('checking');
+  const [webGLInfo, setWebGLInfo] = useState<ReturnType<typeof detectWebGL> | null>(null);
   const [fitTrigger, setFitTrigger] = useState(0);
   const [modelBox, setModelBox] = useState<THREE.Box3 | null>(null);
   const theme = useSimulationStore((s) => s.theme);
 
   useEffect(() => {
-    setWebglAvailable(detectWebGL().available);
+    const info = detectWebGL();
+    setWebGLInfo(info);
+    const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+    const isDevPreview = typeof window !== 'undefined' && window.location.pathname.includes('/preview');
+
+    console.log('[Scene] WebGL probe', info);
+    console.log('[Scene] isElectron:', isElectron, 'isDevPreview:', isDevPreview, 'userAgent:', typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a');
+
+    if (!info.available) {
+      console.warn('[Scene] WebGL not available → using Preview-compatible lightweight fallback', info.error);
+      setRenderMode('fallback');
+      return;
+    }
+
+    // Lightweight test: can we actually get a context? (Electron GPU process may report available but fail to create)
+    try {
+      const testCanvas = document.createElement('canvas');
+      testCanvas.width = 2;
+      testCanvas.height = 2;
+      const testGl =
+        (testCanvas.getContext('webgl2', { antialias: false } as any) as any) ||
+        testCanvas.getContext('webgl', { antialias: false } as any) ||
+        testCanvas.getContext('experimental-webgl', { antialias: false } as any);
+      if (!testGl) throw new Error('test WebGL context is null');
+      // Try to get a renderer instance without actually rendering
+      const lose = testGl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+      console.log('[Scene] WebGL test context OK → using normal renderer', info.version, info.renderer);
+      setRenderMode('normal');
+    } catch (e) {
+      console.warn('[Scene] WebGL test context failed → fallback', String(e));
+      setRenderMode('fallback');
+    }
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -276,11 +310,15 @@ const Scene = forwardRef<SceneHandle>((_, ref) => {
 
   const bgColor = theme === 'dark' ? '#050B14' : '#f0f4f8';
 
-  if (webglAvailable === null) return <SceneLoading />;
-  if (!webglAvailable)         return <WebGLFallback />;
+  if (renderMode === 'checking') return <SceneLoading />;
+  if (renderMode === 'fallback') {
+    console.log('[Scene] rendering LightweightDroneView (Preview-compatible) — same drone state, Y up (x,z,-y)');
+    return <LightweightDroneView />;
+  }
 
+  // Normal high-GPU path — on error, fall back to lightweight instead of blank
   return (
-    <WebGLErrorBoundary fallback={<WebGLFallback />}>
+    <WebGLErrorBoundary fallback={<LightweightDroneView />}>
       <SuppressThreeErrors>
         <Canvas
           camera={{ position: [8, 6, 8], fov: 45 }}
@@ -291,8 +329,14 @@ const Scene = forwardRef<SceneHandle>((_, ref) => {
             powerPreference: 'default',
             failIfMajorPerformanceCaveat: false,
           }}
-          fallback={<WebGLFallback />}
+          fallback={<LightweightDroneView />}
           onCreated={({ gl }) => {
+            const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+            console.log('[Scene] Three.WebGLRenderer created — normal path', {
+              isElectron,
+              version: webGLInfo?.version,
+              renderer: webGLInfo?.renderer,
+            });
             gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             gl.shadowMap.enabled = true;
             gl.shadowMap.type = THREE.PCFSoftShadowMap;
