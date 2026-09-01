@@ -59,6 +59,7 @@ export default function Environment() {
         <GizmoHelper alignment="bottom-left" margin={[60, 60]}>
           <GizmoViewport
             axisColors={['#ef4444', '#22c55e', '#3b82f6']}
+            labels={['X', 'Z', 'Y']}
             labelColor={isDark ? '#e2e8f0' : '#0f172a'}
           />
         </GizmoHelper>
