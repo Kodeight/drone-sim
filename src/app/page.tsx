@@ -28,8 +28,8 @@ import HelpPage from '@/components/pages/HelpPage';
 import AboutPage from '@/components/pages/AboutPage';
 import SkeletonLoader from '@/components/ui/SkeletonLoader';
 
-// Dynamically import Scene to avoid SSR issues
-const Scene = dynamic(() => import('@/components/3d/Scene'), { ssr: false });
+// SceneSwitcher auto-chooses normal Scene (high-GPU) or SceneLowGPU (low-GPU) — original Scene untouched
+const Scene = dynamic(() => import('@/components/3d/SceneSwitcher'), { ssr: false });
 
 function LoadingFallback() {
   return (
