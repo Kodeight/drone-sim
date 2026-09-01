@@ -34,6 +34,21 @@ const requestedAngle = process.argv.find(function (a) {
   return a.startsWith('--use-angle=');
 });
 
+// Fix for low-GPU / blocklisted Intel HD Graphics (D3D9Ex BindToCurrentSequence failure)
+// Preview works in Chrome (absolute assets, hardware accel) while Electron file:// with
+// sandboxed D3D9 fails. Apply minimal workarounds; keep hardware accel for capable machines.
+// If WebGL still cannot be created, Scene will auto-fallback to Lightweight → 2D Canvas.
+if (requestedAngle) {
+  const angleValue = requestedAngle.split('=')[1] || 'default';
+  app.commandLine.appendSwitch('use-angle', angleValue);
+  console.log('[Main] Using requested ANGLE:', angleValue);
+} else {
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  console.log('[Main] Applied GPU workarounds: ignore-gpu-blocklist, enable-gpu-rasterization, enable-zero-copy (requestedAngle not set; use --use-angle=warp for software)');
+}
+
 let mainWindow;
 
 function createWindow() {

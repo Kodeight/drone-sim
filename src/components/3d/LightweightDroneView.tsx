@@ -6,6 +6,9 @@ import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from '@react-three/dr
 import * as THREE from 'three';
 import DroneModel, { fitCameraToBox } from './DroneModel';
 import { useSimulationStore } from '@/store/simulationStore';
+import Fallback2DView from './Fallback2DView';
+import { WebGLErrorBoundary } from './WebGLErrorBoundary';
+import { detectWebGL } from '@/lib/webglDetect';
 
 /**
  * LightweightDroneView — fallback renderer for low-GPU / Electron WebGL failures.
@@ -84,61 +87,76 @@ function FallbackSceneContent({ onBox }: { onBox: (b: THREE.Box3) => void }) {
 
 export default function LightweightDroneView() {
   const [box, setBox] = useState<THREE.Box3 | null>(null);
+  const [use2D, setUse2D] = useState(false);
   const handleBox = useCallback((b: THREE.Box3) => setBox(b), []);
   const isElectron = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
 
   useEffect(() => {
     console.log('[LightweightFallback] mounted — isElectron:', isElectron, 'using Preview-compatible lightweight renderer (no shadows, low-power)');
+    const info = detectWebGL();
+    console.log('[LightweightFallback] WebGL probe', info);
+    if (!info.available) {
+      console.warn('[LightweightFallback] WebGL not available → switching to 2D canvas fallback');
+      setUse2D(true);
+    }
   }, [isElectron]);
 
+  if (use2D) {
+    console.log('[LightweightFallback] rendering Fallback2DView (guaranteed 2D)');
+    return <Fallback2DView />;
+  }
+
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--bg-app, #f0f4f8)' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 8,
-          left: 8,
-          zIndex: 5,
-          background: 'rgba(245,158,11,0.12)',
-          border: '1px solid rgba(245,158,11,0.35)',
-          padding: '6px 10px',
-          borderRadius: 6,
-          fontFamily: 'monospace',
-          fontSize: 10,
-          color: 'var(--text-secondary, #6b7280)',
-        }}
-      >
-        Low-GPU fallback — Preview rendering
+    <WebGLErrorBoundary fallback={<Fallback2DView />}>
+      <div style={{ width: '100%', height: '100%', position: 'relative', background: 'var(--bg-app, #f0f4f8)' }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            zIndex: 5,
+            background: 'rgba(245,158,11,0.12)',
+            border: '1px solid rgba(245,158,11,0.35)',
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontFamily: 'monospace',
+            fontSize: 10,
+            color: 'var(--text-secondary, #6b7280)',
+          }}
+        >
+          Low-GPU fallback — Preview rendering
+        </div>
+        <Canvas
+          camera={{ position: [8, 6, 8], fov: 45 }}
+          shadows={false}
+          dpr={[1, 1.2]}
+          gl={{
+            antialias: false,
+            alpha: true,
+            depth: true,
+            stencil: false,
+            powerPreference: 'low-power',
+            failIfMajorPerformanceCaveat: false,
+            preserveDrawingBuffer: false,
+          }}
+          style={{ width: '100%', height: '100%', background: isElectron ? '#050B14' : '#f0f4f8' }}
+          fallback={<Fallback2DView />}
+          onCreated={({ gl }) => {
+            console.log('[LightweightFallback] WebGLRenderer created', {
+              isElectron,
+              vendor: (gl as any).getParameter?.((gl as any).VERSION),
+              shadowMap: gl.shadowMap.enabled,
+            });
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.2));
+            gl.shadowMap.enabled = false;
+          }}
+        >
+          <Suspense fallback={null}>
+            <FallbackSceneContent onBox={handleBox} />
+            <FallbackCameraFramer box={box} />
+          </Suspense>
+        </Canvas>
       </div>
-      <Canvas
-        camera={{ position: [8, 6, 8], fov: 45 }}
-        shadows={false}
-        dpr={[1, 1.2]}
-        gl={{
-          antialias: false,
-          alpha: true,
-          depth: true,
-          stencil: false,
-          powerPreference: 'low-power',
-          failIfMajorPerformanceCaveat: false,
-          preserveDrawingBuffer: false,
-        }}
-        style={{ width: '100%', height: '100%', background: isElectron ? '#050B14' : '#f0f4f8' }}
-        onCreated={({ gl }) => {
-          console.log('[LightweightFallback] WebGLRenderer created', {
-            isElectron,
-            vendor: (gl as any).getParameter?.((gl as any).VERSION),
-            shadowMap: gl.shadowMap.enabled,
-          });
-          gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.2));
-          gl.shadowMap.enabled = false;
-        }}
-      >
-        <Suspense fallback={null}>
-          <FallbackSceneContent onBox={handleBox} />
-          <FallbackCameraFramer box={box} />
-        </Suspense>
-      </Canvas>
-    </div>
+    </WebGLErrorBoundary>
   );
 }
