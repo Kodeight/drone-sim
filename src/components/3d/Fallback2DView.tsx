@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
 
 /**
@@ -14,6 +14,14 @@ export default function Fallback2DView() {
   const animRef = useRef<number>(0);
   const propAngleRef = useRef<number[]>([0, 0, 0, 0]);
 
+  // Subscribe to store to trigger re-renders when relevant state changes
+  const drone = useSimulationStore((s) => s.drone);
+  const target = useSimulationStore((s) => s.target);
+  const isRunning = useSimulationStore((s) => s.isRunning);
+  const showTarget = useSimulationStore((s) => s.showTarget);
+  const showGrid = useSimulationStore((s) => s.showGrid);
+  const showAxes = useSimulationStore((s) => s.showAxes);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -22,17 +30,17 @@ export default function Fallback2DView() {
 
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
-    const resize = () => {
+    const resize = useCallback(() => {
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
+    }, [dpr]);
+
     resize();
     window.addEventListener('resize', resize);
 
-    const draw = () => {
-      const { drone, target, showTarget, isRunning } = useSimulationStore.getState();
+    const draw = useCallback(() => {
       const rect = canvas.getBoundingClientRect();
       const w = rect.width;
       const h = rect.height;
@@ -45,47 +53,54 @@ export default function Fallback2DView() {
       if (!ctx.fillStyle || ctx.fillStyle === '') ctx.fillStyle = '#f0f4f8';
       ctx.fillRect(0, 0, w, h);
 
-      // Grid (XZ plane)
-      ctx.strokeStyle = 'rgba(120,130,150,0.12)';
-      ctx.lineWidth = 1;
-      const gridSize = 20;
-      for (let i = -gridSize; i <= gridSize; i++) {
-        const sx = cx + i * scale;
-        ctx.beginPath();
-        ctx.moveTo(sx, 0);
-        ctx.lineTo(sx, h);
-        ctx.stroke();
-        const sz = cy + i * scale;
-        ctx.beginPath();
-        ctx.moveTo(0, sz);
-        ctx.lineTo(w, sz);
-        ctx.stroke();
+      // Grid (XZ plane, same coordinate system as 3D view)
+      if (showGrid) {
+        ctx.strokeStyle = 'rgba(120,130,150,0.12)';
+        ctx.lineWidth = 1;
+        const gridSize = 20;
+        for (let i = -gridSize; i <= gridSize; i++) {
+          const sx = cx + i * scale;
+          ctx.beginPath();
+          ctx.moveTo(sx, 0);
+          ctx.lineTo(sx, h);
+          ctx.stroke();
+          const sz = cy + i * scale;
+          ctx.beginPath();
+          ctx.moveTo(0, sz);
+          ctx.lineTo(w, sz);
+          ctx.stroke();
+        }
       }
-      // Axes
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + 40, cy);
-      ctx.stroke();
-      ctx.fillStyle = '#ef4444';
-      ctx.font = '10px monospace';
-      ctx.fillText('X', cx + 44, cy + 3);
-      ctx.strokeStyle = '#3b82f6';
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx, cy + 40);
-      ctx.stroke();
-      ctx.fillStyle = '#3b82f6';
-      ctx.fillText('Z', cx + 3, cy + 52);
-      // Y up label
-      ctx.fillStyle = '#22c55e';
-      ctx.fillText('Y↑', cx - 20, cy - 30);
+
+      // Axes: red = X (horizontal), blue = Z (depth/vertical in top-down), green = Y up label
+      if (showAxes) {
+        ctx.strokeStyle = '#ef4444'; // red X
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + 40, cy);
+        ctx.stroke();
+        ctx.fillStyle = '#ef4444';
+        ctx.font = '10px monospace';
+        ctx.fillText('X', cx + 44, cy + 3);
+
+        ctx.strokeStyle = '#3b82f6'; // blue Z
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy + 40);
+        ctx.stroke();
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillText('Z', cx + 3, cy + 52);
+
+        // Y up label
+        ctx.fillStyle = '#22c55e';
+        ctx.fillText('Y↑', cx - 20, cy - 30);
+      }
 
       // Target
       if (showTarget) {
         const tx = cx + target.x * scale;
-        const tz = cy + (-target.y) * scale; // display Z = -y
+        const tz = cy + target.z * scale; // display same coord mapping as 3D: (x, z, -y) but top-down shows x,z
         ctx.fillStyle = 'rgba(34,197,94,0.9)';
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = 2;
@@ -93,7 +108,7 @@ export default function Fallback2DView() {
         ctx.arc(tx, tz, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        // pole to ground
+        // pole to drone
         ctx.strokeStyle = 'rgba(34,197,94,0.25)';
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
@@ -103,10 +118,11 @@ export default function Fallback2DView() {
         ctx.setLineDash([]);
       }
 
-      // Drone position in display frame: X=x, Y=z (up), Z=-y
+      // Drone position in display frame: X=x, Z=-y (altitude), using same coord mapping as 3D
       const dx = cx + drone.x * scale;
-      const dz = cy + (-drone.y) * scale;
-      const yaw = drone.yaw; // sim yaw rotates around Z, display yaw around Y
+      const dz = cy + (-drone.y) * scale; // display Z = -y (altitude inverted for canvas)
+      const yaw = drone.yaw;
+
       // Update propeller angles
       const thrusts: number[] = (drone.motorThrusts as any) || [0, 0, 0, 0];
       const dirs = [1, -1, -1, 1];
@@ -219,14 +235,14 @@ export default function Fallback2DView() {
       ctx.restore();
 
       animRef.current = requestAnimationFrame(draw);
-    };
+    }, [drone, target, isRunning, showTarget, showGrid, showAxes, scale, cx, cy]);
 
     draw();
     return () => {
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(animRef.current);
     };
-  }, []);
+  }, [drone, target, isRunning, showTarget, showGrid, showAxes]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>

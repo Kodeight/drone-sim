@@ -56,11 +56,12 @@ export default function Environment() {
 
       {/* ── World axes gizmo ───────────────────────────────────────── */}
       {showAxes && (
-        <GizmoHelper alignment="bottom-left" margin={[60, 60]}>
+        <GizmoHelper alignment="bottom-left" margin={[60, 60]} size={1.5}>
           <GizmoViewport
             axisColors={['#ef4444', '#22c55e', '#3b82f6']}
             labels={['X', 'Z', 'Y']}
             labelColor={isDark ? '#e2e8f0' : '#0f172a'}
+            lineThickness={1}
           />
         </GizmoHelper>
       )}
