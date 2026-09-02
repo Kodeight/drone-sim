@@ -41,12 +41,12 @@ export default function Environment() {
       {/* ── Grid ───────────────────────────────────────────────────── */}
       {showGrid && (
         <Grid
-          args={[200, 200]}
+          args={[50, 50]}
           cellSize={1}
-          cellThickness={0.4}
+          cellThickness={0.1}
           cellColor={isDark ? '#0f2a4a' : '#c8cdd8'}
           sectionSize={5}
-          sectionThickness={0.8}
+          sectionThickness={0.1}
           sectionColor={isDark ? '#1a4a7a' : '#8fa0b8'}
           fadeDistance={80}
           fadeStrength={1.2}
@@ -56,12 +56,11 @@ export default function Environment() {
 
       {/* ── World axes gizmo ───────────────────────────────────────── */}
       {showAxes && (
-        <GizmoHelper alignment="bottom-left" margin={[60, 60]} size={1.5}>
+        <GizmoHelper alignment="bottom-left" margin={[60, 60]}>
           <GizmoViewport
             axisColors={['#ef4444', '#22c55e', '#3b82f6']}
             labels={['X', 'Z', 'Y']}
             labelColor={isDark ? '#e2e8f0' : '#0f172a'}
-            lineThickness={1}
           />
         </GizmoHelper>
       )}
